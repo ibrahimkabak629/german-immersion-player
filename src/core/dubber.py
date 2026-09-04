@@ -1,30 +1,40 @@
 import os
 import subprocess
 import tempfile
-from elevenlabs.client import ElevenLabs
+import requests
 from dotenv import load_dotenv
 
 load_dotenv()
 
-client = ElevenLabs(api_key=os.getenv("ELEVENLABS_API_KEY"))
+FISH_AUDIO_API_KEY = os.getenv("FISH_AUDIO_API_KEY")
+FISH_AUDIO_TTS_URL = "https://api.fish.audio/v1/tts"
 
-# Rachel — default multilingual voice, works well with German via eleven_multilingual_v2
-DEFAULT_VOICE_ID = "21m00Tcm4TlvDq8ikWAM"
-DEFAULT_MODEL_ID = "eleven_multilingual_v2"
+# None uses Fish Audio's default voice; pass a reference_id to use a specific voice
+DEFAULT_REFERENCE_ID = None
+DEFAULT_MODEL = "s2.1-pro"
 
 
-def generate_speech(text: str, output_path: str, voice_id: str = DEFAULT_VOICE_ID) -> str | None:
+def generate_speech(text: str, output_path: str, reference_id: str | None = DEFAULT_REFERENCE_ID) -> str | None:
     try:
-        audio = client.text_to_speech.convert(
-            voice_id=voice_id,
-            text=text,
-            model_id=DEFAULT_MODEL_ID,
-            output_format="mp3_44100_128",
-        )
+        headers = {
+            "Authorization": f"Bearer {FISH_AUDIO_API_KEY}",
+            "Content-Type": "application/json",
+            "model": DEFAULT_MODEL,
+        }
+
+        payload = {
+            "text": text,
+            "format": "mp3",
+            "mp3_bitrate": 128,
+        }
+        if reference_id:
+            payload["reference_id"] = reference_id
+
+        response = requests.post(FISH_AUDIO_TTS_URL, headers=headers, json=payload)
+        response.raise_for_status()
 
         with open(output_path, "wb") as f:
-            for chunk in audio:
-                f.write(chunk)
+            f.write(response.content)
 
         return output_path
 
@@ -96,7 +106,7 @@ def fit_audio_to_duration(input_path: str, output_path: str, target_duration: fl
         return None
 
 
-def generate_dubbed_segments(segments: list, temp_dir: str, voice_id: str = DEFAULT_VOICE_ID) -> list | None:
+def generate_dubbed_segments(segments: list, temp_dir: str, reference_id: str | None = DEFAULT_REFERENCE_ID) -> list | None:
     """
     Generates German TTS audio for each translated segment and time-fits it
     to its segment's [start, end] window. Returns segments with an added
@@ -114,7 +124,7 @@ def generate_dubbed_segments(segments: list, temp_dir: str, voice_id: str = DEFA
                 continue
 
             raw_path = os.path.join(temp_dir, f"segment_{i}_raw.mp3")
-            if not generate_speech(text, raw_path, voice_id=voice_id):
+            if not generate_speech(text, raw_path, reference_id=reference_id):
                 return None
 
             target_duration = segment["end"] - segment["start"]
@@ -201,14 +211,14 @@ def mux_audio_with_video(video_path: str, audio_path: str, output_path: str) -> 
         return None
 
 
-def dub_video(video_path: str, segments: list, output_path: str, voice_id: str = DEFAULT_VOICE_ID) -> str | None:
+def dub_video(video_path: str, segments: list, output_path: str, reference_id: str | None = DEFAULT_REFERENCE_ID) -> str | None:
     """
     Full pipeline: translated segments -> German TTS -> synced audio track -> dubbed video.
     """
     print(f"Dubbing video: {video_path}")
 
     with tempfile.TemporaryDirectory() as temp_dir:
-        dubbed_segments = generate_dubbed_segments(segments, temp_dir, voice_id=voice_id)
+        dubbed_segments = generate_dubbed_segments(segments, temp_dir, reference_id=reference_id)
         if not dubbed_segments:
             return None
 
