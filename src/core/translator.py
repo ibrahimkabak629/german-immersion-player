@@ -1,5 +1,7 @@
 from google import genai
+from google.genai.errors import ServerError
 import os
+import time
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -15,13 +17,12 @@ LEVEL_DESCRIPTIONS = {
     "C2": "mastery level German, full natural native-like speech, no simplification"
 }
 
-def translate_to_german(text: str, level: str = "B1") -> str | None:
-    try:
-        level_desc = LEVEL_DESCRIPTIONS.get(level, LEVEL_DESCRIPTIONS["B1"])
-        
-        print(f"Translating to German at level {level}...")
-        
-        prompt = f"""Translate the following English text to German at {level} level.
+def translate_to_german(text: str, level: str = "B1", max_retries: int = 4) -> str | None:
+    level_desc = LEVEL_DESCRIPTIONS.get(level, LEVEL_DESCRIPTIONS["B1"])
+
+    print(f"Translating to German at level {level}...")
+
+    prompt = f"""Translate the following English text to German at {level} level.
 
 {level_desc}.
 
@@ -30,18 +31,27 @@ Only return the translated German text, nothing else. No explanations, no notes.
 English text:
 {text}"""
 
-        response = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=prompt
-        )
-        
-        translated = response.text.strip()
-        print("Translation complete!")
-        return translated
-        
-    except Exception as e:
-        print(f"Error translating: {e}")
-        return None
+    for attempt in range(1, max_retries + 1):
+        try:
+            response = client.models.generate_content(
+                model="gemini-3.6-flash",
+                contents=prompt
+            )
+
+            translated = response.text.strip()
+            print("Translation complete!")
+            return translated
+
+        except ServerError as e:
+            if attempt == max_retries:
+                print(f"Error translating (giving up after {attempt} attempts): {e}")
+                return None
+            wait = 2 ** attempt
+            print(f"Model temporarily unavailable (attempt {attempt}/{max_retries}), retrying in {wait}s...")
+            time.sleep(wait)
+        except Exception as e:
+            print(f"Error translating: {e}")
+            return None
 
 
 def translate_segments(segments: list, level: str = "B1") -> list | None:
