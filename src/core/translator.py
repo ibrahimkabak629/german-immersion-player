@@ -1,15 +1,13 @@
 import deepl
-from google import genai
-from google.genai.errors import ServerError
+import anthropic
 import os
 import time
 from dotenv import load_dotenv
 
 load_dotenv()
 
-client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-
 _deepl_client: deepl.Translator | None = None
+_anthropic_client: anthropic.Anthropic | None = None
 
 
 def _get_deepl_client() -> deepl.Translator:
@@ -17,6 +15,13 @@ def _get_deepl_client() -> deepl.Translator:
     if _deepl_client is None:
         _deepl_client = deepl.Translator(os.getenv("DEEPL_API_KEY"))
     return _deepl_client
+
+
+def _get_anthropic_client() -> anthropic.Anthropic:
+    global _anthropic_client
+    if _anthropic_client is None:
+        _anthropic_client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+    return _anthropic_client
 
 
 LEVEL_DESCRIPTIONS = {
@@ -60,13 +65,14 @@ German text:
 
     for attempt in range(1, max_retries + 1):
         try:
-            response = client.models.generate_content(
-                model="gemini-3.6-flash",
-                contents=prompt
+            response = _get_anthropic_client().messages.create(
+                model="claude-sonnet-5",
+                max_tokens=1024,
+                messages=[{"role": "user", "content": prompt}],
             )
-            return response.text.strip()
+            return response.content[0].text.strip()
 
-        except ServerError as e:
+        except (anthropic.InternalServerError, anthropic.APIConnectionError, anthropic.RateLimitError) as e:
             if attempt == max_retries:
                 print(f"Error adapting level (giving up after {attempt} attempts): {e}")
                 return None
