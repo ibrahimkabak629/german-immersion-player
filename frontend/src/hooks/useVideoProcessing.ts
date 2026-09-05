@@ -8,7 +8,7 @@ export type ProcessingStep = 'extracting_audio' | 'transcribing' | 'translating'
 export type ProcessingState =
   | { status: 'idle' }
   | { status: 'processing'; step: ProcessingStep | null }
-  | { status: 'ready'; videoFile: File; segments: Segment[] }
+  | { status: 'ready'; videoFile: File; srtBlob: Blob; segments: Segment[] }
   | { status: 'error'; message: string };
 
 /**
@@ -39,8 +39,9 @@ export function useVideoProcessing() {
     try {
       const { videoBlob, srtText } = await processVideo(source, level);
       const videoFile = new File([videoBlob], 'dubbed_video.mp4', { type: 'video/mp4' });
+      const srtBlob = new Blob([srtText], { type: 'application/x-subrip' });
       const segments = parseDualSrt(srtText);
-      setState({ status: 'ready', videoFile, segments });
+      setState({ status: 'ready', videoFile, srtBlob, segments });
     } catch (error) {
       const message = error instanceof ApiError ? error.message : 'Something went wrong while processing this video.';
       setState({ status: 'error', message });

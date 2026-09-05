@@ -7,6 +7,7 @@ import { VideoPlayer } from './components/video/VideoPlayer';
 import { VideoSourceBar } from './components/video/VideoSourceBar';
 import { ProcessingOverlay } from './components/video/ProcessingOverlay';
 import { ProcessingErrorPanel } from './components/video/ProcessingErrorPanel';
+import { DownloadBar } from './components/video/DownloadBar';
 import { TranscriptPanel } from './components/transcript/TranscriptPanel';
 import { AITutorChat } from './components/tutor/AITutorChat';
 import { useVideoProcessing } from './hooks/useVideoProcessing';
@@ -22,12 +23,17 @@ function AppContent() {
   let videoArea;
   if (processing.status === 'ready') {
     videoArea = (
-      <VideoPlayer
-        ref={videoPlayerRef}
-        source={{ kind: 'file', file: processing.videoFile }}
-        segments={processing.segments}
-        onSourceChange={reset}
-      />
+      <div className="flex h-full flex-col gap-3">
+        <div className="min-h-0 flex-1">
+          <VideoPlayer
+            ref={videoPlayerRef}
+            source={{ kind: 'file', file: processing.videoFile }}
+            segments={processing.segments}
+            onSourceChange={reset}
+          />
+        </div>
+        <DownloadBar videoFile={processing.videoFile} srtBlob={processing.srtBlob} />
+      </div>
     );
   } else if (processing.status === 'processing') {
     videoArea = <ProcessingOverlay step={processing.step} />;
