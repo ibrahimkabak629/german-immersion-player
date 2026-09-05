@@ -3,7 +3,7 @@ import os
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.core.translator import translate_segments
+from src.core.translator import translate_base, translate_segments, translate_to_german
 
 # Using the first 3 segments from our transcriber test
 test_segments = [
@@ -24,9 +24,24 @@ test_segments = [
     }
 ]
 
-# Test at A1 level first
-print("Testing translation at A1 level...\n")
-result = translate_segments(test_segments, level="A1")
+# 1. DeepL base translation on its own, no level adaptation
+print("Testing DeepL base translation...\n")
+base = translate_base(test_segments[0]["text"])
+if base:
+    print(f"English: {test_segments[0]['text']}")
+    print(f"German (DeepL, unadapted): {base}\n")
+else:
+    print("DeepL base translation failed!\n")
+
+# 2. Same sentence at both ends of the CEFR scale, to show the adaptation step working
+print("Testing level adaptation (A1 vs C2) on one sentence...\n")
+for level in ["A1", "C2"]:
+    result = translate_to_german(test_segments[0]["text"], level=level)
+    print(f"[{level}] {result}\n")
+
+# 3. Full segment batch at B1, same shape the rest of the pipeline expects
+print("Testing full segment translation at B1 level...\n")
+result = translate_segments(test_segments, level="B1")
 
 if result:
     print("\nRESULT:")
