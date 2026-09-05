@@ -19,12 +19,14 @@ def _get_deepl_client() -> deepl.Translator:
     return _deepl_client
 
 
-def _get_groq_client() -> groq.Groq:
+def get_groq_client() -> groq.Groq:
     global _groq_client
     if _groq_client is None:
         _groq_client = groq.Groq(api_key=os.getenv("GROQ_API_KEY"))
     return _groq_client
 
+
+GROQ_ADAPTATION_MODEL = "openai/gpt-oss-120b"
 
 LEVEL_DESCRIPTIONS = {
     "A1": "very simple German, short sentences, only the most basic everyday words, like speaking to a complete beginner",
@@ -67,8 +69,8 @@ German text:
 
     for attempt in range(1, max_retries + 1):
         try:
-            response = _get_groq_client().chat.completions.create(
-                model="openai/gpt-oss-120b",
+            response = get_groq_client().chat.completions.create(
+                model=GROQ_ADAPTATION_MODEL,
                 max_tokens=1024,
                 messages=[{"role": "user", "content": prompt}],
             )

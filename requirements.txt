@@ -1,0 +1,8 @@
+openai-whisper==20250625
+deepl==1.32.0
+groq==1.7.0
+requests==2.34.2
+python-dotenv==1.2.2
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+python-multipart==0.0.32
