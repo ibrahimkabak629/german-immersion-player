@@ -48,6 +48,54 @@ def translate_base(text: str) -> str | None:
         return None
 
 
+def refine_translation_context(english_text: str, german_text: str, max_retries: int = 2) -> str:
+    """
+    DeepL sometimes translates slang, idioms, or context-dependent words too
+    literally or in an uncommon sense. This reviews the pair and, when the
+    English contains that kind of word, rewrites the German to the most
+    common MODERN everyday usage instead. This is a best-effort quality pass,
+    not a hard requirement - any failure just falls back to DeepL's own
+    output rather than aborting the translation.
+    """
+    prompt = f"""You are reviewing a machine translation from English to German, checking
+specifically for slang, idioms, or words with multiple possible meanings that
+machine translation often gets wrong (too literal, or an uncommon/outdated sense).
+
+English original: "{english_text}"
+DeepL's German translation: "{german_text}"
+
+If the English contains slang, an idiom, or a context-dependent word, and the German
+translation uses an uncommon, overly literal, or outdated sense of it, rewrite just
+that part using the most common MODERN everyday German usage a native speaker would
+actually use in this context. Keep the rest of the sentence unchanged.
+
+If the translation is already natural and correct, return it exactly as given.
+
+Return ONLY the German text - no explanations, no notes, no quotation marks."""
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            response = get_groq_client().chat.completions.create(
+                model=GROQ_ADAPTATION_MODEL,
+                max_tokens=512,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            return response.choices[0].message.content.strip()
+
+        except (groq.InternalServerError, groq.APIConnectionError, groq.RateLimitError) as e:
+            if attempt == max_retries:
+                print(f"Error refining translation context (keeping DeepL's output): {e}")
+                return german_text
+            wait = 2 ** attempt
+            print(f"Model temporarily unavailable (attempt {attempt}/{max_retries}), retrying in {wait}s...")
+            time.sleep(wait)
+        except Exception as e:
+            print(f"Error refining translation context (keeping DeepL's output): {e}")
+            return german_text
+
+    return german_text
+
+
 def adapt_to_level(german_text: str, level: str, max_retries: int = 4) -> str | None:
     """
     Rewrites an already-correct German translation to match a target CEFR level.
@@ -58,13 +106,21 @@ def adapt_to_level(german_text: str, level: str, max_retries: int = 4) -> str | 
 
     level_desc = LEVEL_DESCRIPTIONS.get(level, LEVEL_DESCRIPTIONS["B1"])
 
-    prompt = f"""Rewrite the following German text so it matches {level} level.
+    prompt = f"""You are adapting German text to a specific CEFR difficulty level. Follow these rules strictly:
 
-{level_desc}.
+1. NEVER change the meaning of the text.
+2. NEVER add information, examples, or ideas that are not in the original.
+3. NEVER remove or omit any information that is in the original.
+4. ONLY adjust vocabulary complexity and sentence structure to match the target level.
+5. Keep the same facts, names, numbers, and order of ideas as the original.
+6. The result must express exactly the same content as the input - just written at a
+   different difficulty level, not a different or expanded version of it.
 
-Keep the same meaning. Only return the rewritten German text, nothing else. No explanations, no notes.
+Target level: {level} - {level_desc}.
 
-German text:
+Return ONLY the rewritten German text. No explanations, no notes, no quotation marks.
+
+Original German text:
 {german_text}"""
 
     for attempt in range(1, max_retries + 1):
@@ -95,7 +151,9 @@ def translate_to_german(text: str, level: str = "B1", video_source: str | None =
     if base is None:
         return None
 
-    adapted = adapt_to_level(base, level)
+    refined_base = refine_translation_context(text, base)
+
+    adapted = adapt_to_level(refined_base, level)
     if adapted is None:
         return None
 

@@ -89,27 +89,42 @@ def _atempo_chain(speed: float) -> str:
     return ",".join(filters)
 
 
+MAX_TEMPO_ADJUSTMENT = 0.20  # cap atempo changes to +/-20% before speech starts sounding unnatural
+
+
 def fit_audio_to_duration(input_path: str, output_path: str, target_duration: float) -> str | None:
     """
-    Time-stretches (or compresses) an audio clip so its duration matches
-    target_duration, so dubbed speech lines up with its subtitle segment.
+    Time-stretches (or compresses) an audio clip toward target_duration, so
+    dubbed speech lines up with its subtitle segment.
 
-    atempo shifts perceived loudness (speeding up raises it, slowing down
-    drops it), so every segment is run through loudnorm afterward - applied
-    to every segment, not just stretched ones, so unstretched segments end
-    up at the same target loudness rather than standing out.
+    atempo alone was being pushed far outside a natural pace on segments with
+    a big duration mismatch, making speech sound obviously sped up or slowed
+    down. The tempo change is now capped at MAX_TEMPO_ADJUSTMENT; anything
+    beyond that cap is absorbed as trailing silence (a natural pause) when the
+    clip is still short of the target, or left to overrun slightly when it's
+    still long - either is less jarring than an aggressive tempo change.
+
+    atempo also shifts perceived loudness (speeding up raises it, slowing
+    down drops it), so every segment is run through loudnorm afterward -
+    applied to every segment, not just stretched ones, so unstretched
+    segments end up at the same target loudness rather than standing out.
     """
     try:
         actual_duration = get_audio_duration(input_path)
         if actual_duration is None or actual_duration <= 0:
             return None
 
-        speed = actual_duration / target_duration
+        raw_speed = actual_duration / target_duration
+        speed = min(max(raw_speed, 1 - MAX_TEMPO_ADJUSTMENT), 1 + MAX_TEMPO_ADJUSTMENT)
+
         filters = []
         # Skip stretching when it's already close enough to avoid audible artifacts
         if abs(speed - 1.0) >= 0.03:
             filters.append(_atempo_chain(speed))
         filters.append("loudnorm=I=-16:TP=-1.5:LRA=11")
+        # No-op if the clip (after the capped tempo change) already meets or
+        # exceeds target_duration - only pads when capping left it short.
+        filters.append(f"apad=whole_dur={target_duration:.3f}")
 
         command = [
             "ffmpeg", "-y", "-i", input_path,

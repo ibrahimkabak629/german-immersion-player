@@ -31,11 +31,16 @@ export const TranscriptEntry = forwardRef<HTMLButtonElement, TranscriptEntryProp
       <span className="mt-0.5 shrink-0 font-[family-name:var(--font-mono)] text-[11px] text-fg-muted">
         {formatTime(segment.start)}
       </span>
-      <div className="min-w-0">
-        <p className={clsx('text-[15px] leading-snug', isActive ? 'text-fg' : 'text-fg-secondary')}>
+      <div className="min-w-0 flex-1">
+        <p
+          className={clsx(
+            'line-clamp-3 break-words text-[15px] leading-snug',
+            isActive ? 'text-fg' : 'text-fg-secondary',
+          )}
+        >
           {segment.translated}
         </p>
-        <p className="mt-0.5 text-xs leading-snug text-fg-muted">{segment.original}</p>
+        <p className="mt-0.5 line-clamp-2 break-words text-xs leading-snug text-fg-muted">{segment.original}</p>
       </div>
     </button>
   );

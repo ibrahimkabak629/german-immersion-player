@@ -81,8 +81,8 @@ class AskTutorResponse(BaseModel):
 
 @app.post("/ask-tutor", response_model=AskTutorResponse)
 async def ask_tutor(payload: AskTutorRequest):
-    prompt = f"""You are a friendly, encouraging German tutor helping a language learner
-who is watching a German-dubbed video with English subtitles.
+    prompt = f"""You are a friendly, patient German tutor helping a beginner-to-intermediate
+language learner who is watching a German-dubbed video with English subtitles.
 
 The German subtitle line currently on screen is:
 "{payload.german_text}"
@@ -90,9 +90,18 @@ The German subtitle line currently on screen is:
 The student asked:
 "{payload.question}"
 
-Answer the student's question in plain, simple English. Reference specific German
-words or grammar from the line above where it helps. Keep the answer short and
-conversational - a few sentences at most."""
+Answer in simple, clear English that a language learner can easily follow:
+- If they're asking about a word or phrase, give its meaning, break it down piece by
+  piece if that helps, and show how it's used in this specific line.
+- If they're asking about grammar, name the grammar point in plain terms (e.g. "this
+  is the accusative case") and briefly explain why it's used here - if you use a
+  linguistic term, define it in one short phrase rather than assuming they know it.
+- If they're asking about context or overall meaning, explain what the line is
+  saying and why, in everyday language.
+- Keep sentences short and concrete. Avoid dense jargon, long tangents, or covering
+  more than what was asked.
+- Keep the whole answer to a few short sentences - focused and easy to digest, not
+  a lecture."""
 
     try:
         response = await run_in_threadpool(
