@@ -1,3 +1,10 @@
+# openai-whisper pulls in the CPU-only torch wheel by default. For GPU-
+# accelerated local transcription (used as a fallback when Groq is
+# unavailable), reinstall torch from PyTorch's CUDA index afterward, e.g.:
+#   pip install torch==2.12.0 --index-url https://download.pytorch.org/whl/cu132
+# (pick the cuXXX tag matching your installed torch version and GPU driver -
+# check https://download.pytorch.org/whl/torch/ for what's currently offered)
+openai-whisper==20250625
 deepl==1.32.0
 groq==1.7.0
 requests==2.34.2
