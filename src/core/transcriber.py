@@ -1,6 +1,9 @@
 import whisper
 import subprocess
 import os
+import math
+
+CONFIDENCE_THRESHOLD = 0.6
 
 def extract_audio(video_path: str, output_path: str = "temp_audio.wav") -> str | None:
     try:
@@ -20,18 +23,38 @@ def extract_audio(video_path: str, output_path: str = "temp_audio.wav") -> str |
         return None
 
 
-def transcribe_audio(audio_path: str, language: str = "en") -> dict | None:
+def _segment_confidence(segment: dict) -> float:
+    """
+    Whisper doesn't expose a calibrated confidence score, so this approximates
+    one as exp(avg_logprob) - the geometric mean of the segment's per-token
+    probabilities, squashed into a rough 0-1 range.
+    """
+    return math.exp(segment.get("avg_logprob", 0.0))
+
+
+def transcribe_audio(audio_path: str, language: str | None = None) -> dict | None:
     try:
         print("Loading Whisper model...")
-        model = whisper.load_model("base")
-        
+        model = whisper.load_model("large-v3")
+
         print("Transcribing audio...")
+        # language=None lets Whisper auto-detect the spoken language instead
+        # of assuming English.
         result = model.transcribe(audio_path, language=language)
-        
+
+        segments = []
+        for segment in result["segments"]:
+            confidence = _segment_confidence(segment)
+            uncertain = confidence < CONFIDENCE_THRESHOLD
+            if uncertain:
+                print(f"Low-confidence segment ({confidence:.2f}): {segment['text'].strip()!r}")
+            segments.append({**segment, "confidence": confidence, "uncertain": uncertain})
+
         print("Transcription complete!")
         return {
             "text": result["text"],
-            "segments": result["segments"]
+            "language": result.get("language"),
+            "segments": segments,
         }
     except Exception as e:
         print(f"Error transcribing audio: {e}")
