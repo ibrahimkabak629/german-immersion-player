@@ -3,7 +3,7 @@ import { MessageCircleQuestion, Send } from 'lucide-react';
 import type { ChatMessage as ChatMessageType, GermanLevel, Segment } from '../../types/segment';
 import { usePlayback } from '../../context/PlaybackContext';
 import { useActiveSegment } from '../../hooks/useActiveSegment';
-import { getTutorResponse } from '../../data/tutorResponses';
+import { askTutor } from '../../lib/api';
 import { ChatMessage } from './ChatMessage';
 import { ChatTypingIndicator } from './ChatTypingIndicator';
 import { IconButton } from '../ui/IconButton';
@@ -38,20 +38,37 @@ export function AITutorChat({ level, segments }: AITutorChatProps) {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages, isTyping]);
 
-  function handleSend() {
+  async function handleSend() {
     const text = input.trim();
     if (!text) return;
 
     setMessages((prev) => [...prev, { id: nextId(), role: 'user', content: text }]);
     setInput('');
-    setIsTyping(true);
 
-    const delay = 500 + Math.random() * 700;
-    setTimeout(() => {
-      const reply = getTutorResponse(text, { level, activeSegment });
-      setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', content: reply }]);
+    if (!activeSegment) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: nextId(),
+          role: 'assistant',
+          content: `Play the video and pause near the line you're curious about — I use the exact subtitle text as context. You're set to ${level} level, by the way.`,
+        },
+      ]);
+      return;
+    }
+
+    setIsTyping(true);
+    try {
+      const answer = await askTutor(activeSegment.translated, text);
+      setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', content: answer }]);
+    } catch {
+      setMessages((prev) => [
+        ...prev,
+        { id: nextId(), role: 'assistant', content: "Sorry, I couldn't reach the tutor just now. Try again in a moment." },
+      ]);
+    } finally {
       setIsTyping(false);
-    }, delay);
+    }
   }
 
   return (
