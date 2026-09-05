@@ -1,13 +1,15 @@
 import deepl
-import anthropic
+import groq
 import os
 import time
 from dotenv import load_dotenv
 
+from .data_collector import record_translation
+
 load_dotenv()
 
 _deepl_client: deepl.Translator | None = None
-_anthropic_client: anthropic.Anthropic | None = None
+_groq_client: groq.Groq | None = None
 
 
 def _get_deepl_client() -> deepl.Translator:
@@ -17,11 +19,11 @@ def _get_deepl_client() -> deepl.Translator:
     return _deepl_client
 
 
-def _get_anthropic_client() -> anthropic.Anthropic:
-    global _anthropic_client
-    if _anthropic_client is None:
-        _anthropic_client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-    return _anthropic_client
+def _get_groq_client() -> groq.Groq:
+    global _groq_client
+    if _groq_client is None:
+        _groq_client = groq.Groq(api_key=os.getenv("GROQ_API_KEY"))
+    return _groq_client
 
 
 LEVEL_DESCRIPTIONS = {
@@ -65,14 +67,14 @@ German text:
 
     for attempt in range(1, max_retries + 1):
         try:
-            response = _get_anthropic_client().messages.create(
-                model="claude-sonnet-5",
+            response = _get_groq_client().chat.completions.create(
+                model="openai/gpt-oss-120b",
                 max_tokens=1024,
                 messages=[{"role": "user", "content": prompt}],
             )
-            return response.content[0].text.strip()
+            return response.choices[0].message.content.strip()
 
-        except (anthropic.InternalServerError, anthropic.APIConnectionError, anthropic.RateLimitError) as e:
+        except (groq.InternalServerError, groq.APIConnectionError, groq.RateLimitError) as e:
             if attempt == max_retries:
                 print(f"Error adapting level (giving up after {attempt} attempts): {e}")
                 return None
@@ -84,7 +86,7 @@ German text:
             return None
 
 
-def translate_to_german(text: str, level: str = "B1") -> str | None:
+def translate_to_german(text: str, level: str = "B1", video_source: str | None = None) -> str | None:
     print(f"Translating to German at level {level}...")
 
     base = translate_base(text)
@@ -95,18 +97,20 @@ def translate_to_german(text: str, level: str = "B1") -> str | None:
     if adapted is None:
         return None
 
+    record_translation(text, base, level, adapted, video_source)
+
     print("Translation complete!")
     return adapted
 
 
-def translate_segments(segments: list, level: str = "B1") -> list | None:
+def translate_segments(segments: list, level: str = "B1", video_source: str | None = None) -> list | None:
     try:
         translated_segments = []
 
         for i, segment in enumerate(segments):
             print(f"Translating segment {i+1}/{len(segments)}...")
 
-            translated_text = translate_to_german(segment["text"], level)
+            translated_text = translate_to_german(segment["text"], level, video_source)
             if not translated_text:
                 return None
 
