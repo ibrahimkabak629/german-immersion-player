@@ -17,10 +17,12 @@ interface VideoPlayerProps {
   source: VideoSource;
   segments: Segment[];
   onSourceChange: (source: VideoSource) => void;
+  onWordClick?: (word: string, segment: Segment) => void;
+  onEnded?: () => void;
 }
 
 export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(function VideoPlayer(
-  { source, segments, onSourceChange },
+  { source, segments, onSourceChange, onWordClick, onEnded },
   ref,
 ) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -127,6 +129,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
         onTimeUpdate={handleTimeUpdate}
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
+        onEnded={onEnded}
         onError={handleError}
       />
 
@@ -151,7 +154,10 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
         />
       )}
 
-      <SubtitleOverlay segment={activeSegment} />
+      <SubtitleOverlay
+        segment={activeSegment}
+        onWordClick={onWordClick && activeSegment ? (word) => onWordClick(word, activeSegment) : undefined}
+      />
 
       <VideoControls
         isPlaying={isPlaying}

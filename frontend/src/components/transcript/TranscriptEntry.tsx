@@ -2,6 +2,7 @@ import { forwardRef } from 'react';
 import { motion } from 'framer-motion';
 import clsx from 'clsx';
 import type { Segment } from '../../types/segment';
+import { ClickableGermanText } from '../grammar/ClickableGermanText';
 
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -13,10 +14,11 @@ interface TranscriptEntryProps {
   segment: Segment;
   isActive: boolean;
   onClick: () => void;
+  onWordClick?: (word: string) => void;
 }
 
 export const TranscriptEntry = forwardRef<HTMLButtonElement, TranscriptEntryProps>(function TranscriptEntry(
-  { segment, isActive, onClick },
+  { segment, isActive, onClick, onWordClick },
   ref,
 ) {
   return (
@@ -57,7 +59,11 @@ export const TranscriptEntry = forwardRef<HTMLButtonElement, TranscriptEntryProp
             isActive ? 'text-fg' : 'text-fg-secondary group-hover:text-fg',
           )}
         >
-          {segment.translated}
+          <ClickableGermanText
+            text={segment.translated}
+            onWordClick={(word) => onWordClick?.(word)}
+            wordClassName="rounded-sm transition-colors hover:bg-accent-soft hover:text-accent"
+          />
         </p>
         <p className="mt-0.5 line-clamp-2 break-words text-[12.5px] leading-snug text-fg-muted">{segment.original}</p>
       </div>

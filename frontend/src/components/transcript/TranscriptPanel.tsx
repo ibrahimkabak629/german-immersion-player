@@ -7,9 +7,10 @@ import { TranscriptEntry } from './TranscriptEntry';
 
 interface TranscriptPanelProps {
   segments: Segment[];
+  onWordClick?: (word: string, segment: Segment) => void;
 }
 
-export function TranscriptPanel({ segments }: TranscriptPanelProps) {
+export function TranscriptPanel({ segments, onWordClick }: TranscriptPanelProps) {
   const { currentTime, seekTo } = usePlayback();
   const { index: activeIndex } = useActiveSegment(segments, currentTime);
 
@@ -62,6 +63,7 @@ export function TranscriptPanel({ segments }: TranscriptPanelProps) {
               segment={segment}
               isActive={i === activeIndex}
               onClick={() => seekTo(segment.start)}
+              onWordClick={(word) => onWordClick?.(word, segment)}
             />
           ))
         )}

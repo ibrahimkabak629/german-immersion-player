@@ -8,8 +8,19 @@ export type ProcessingStep = 'extracting_audio' | 'transcribing' | 'translating'
 export type ProcessingState =
   | { status: 'idle' }
   | { status: 'processing'; step: ProcessingStep | null }
-  | { status: 'ready'; videoFile: File; srtBlob: Blob; segments: Segment[] }
+  | { status: 'ready'; videoFile: File; srtBlob: Blob; segments: Segment[]; title: string; level: GermanLevel }
   | { status: 'error'; message: string };
+
+function titleFromSource(source: NonNullable<VideoSource>): string {
+  if (source.kind === 'file') return source.file.name.replace(/\.[^.]+$/, '');
+  try {
+    const path = new URL(source.url).pathname;
+    const name = path.split('/').filter(Boolean).pop();
+    return name ? decodeURIComponent(name.replace(/\.[^.]+$/, '')) : 'Video';
+  } catch {
+    return 'Video';
+  }
+}
 
 /**
  * Orchestrates the real pipeline for one video: opens /progress before
@@ -41,7 +52,7 @@ export function useVideoProcessing() {
       const videoFile = new File([videoBlob], 'dubbed_video.mp4', { type: 'video/mp4' });
       const srtBlob = new Blob([srtText], { type: 'application/x-subrip' });
       const segments = parseDualSrt(srtText);
-      setState({ status: 'ready', videoFile, srtBlob, segments });
+      setState({ status: 'ready', videoFile, srtBlob, segments, title: titleFromSource(source), level });
     } catch (error) {
       const message = error instanceof ApiError ? error.message : 'Something went wrong while processing this video.';
       setState({ status: 'error', message });

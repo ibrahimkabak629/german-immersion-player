@@ -1,8 +1,11 @@
 import { AnimatePresence, motion, type Variants } from 'framer-motion';
 import type { Segment } from '../../types/segment';
+import { cleanWord } from '../../lib/germanWords';
+import { useSettings } from '../../context/SettingsContext';
 
 interface SubtitleOverlayProps {
   segment: Segment | null;
+  onWordClick?: (word: string) => void;
 }
 
 const container: Variants = {
@@ -15,7 +18,10 @@ const word: Variants = {
   show: { opacity: 1, y: 0, transition: { duration: 0.22, ease: [0.16, 1, 0.3, 1] } },
 };
 
-export function SubtitleOverlay({ segment }: SubtitleOverlayProps) {
+export function SubtitleOverlay({ segment, onWordClick }: SubtitleOverlayProps) {
+  const { settings } = useSettings();
+  const clickable = settings.grammarExplainer && !!onWordClick;
+
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-[64px] flex max-h-[45%] items-end justify-center px-3 sm:bottom-[84px] sm:max-h-[60%] sm:px-6">
       <AnimatePresence mode="wait">
@@ -26,7 +32,7 @@ export function SubtitleOverlay({ segment }: SubtitleOverlayProps) {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -4, scale: 0.99 }}
             transition={{ duration: 0.18 }}
-            className="gradient-border max-w-2xl overflow-hidden rounded-[var(--radius-md)] bg-black/45 px-3.5 py-2 text-center shadow-[0_8px_30px_-8px_rgba(0,0,0,0.6)] backdrop-blur-md sm:rounded-[var(--radius-lg)] sm:px-5 sm:py-3.5"
+            className="gradient-border relative pointer-events-auto max-w-2xl overflow-hidden rounded-[var(--radius-md)] bg-black/45 px-3.5 py-2 text-center shadow-[0_8px_30px_-8px_rgba(0,0,0,0.6)] backdrop-blur-md sm:rounded-[var(--radius-lg)] sm:px-5 sm:py-3.5"
           >
             <motion.p
               variants={container}
@@ -35,7 +41,19 @@ export function SubtitleOverlay({ segment }: SubtitleOverlayProps) {
               className="flex flex-wrap justify-center gap-x-[0.3em] font-[family-name:var(--font-display)] text-[16px] leading-[1.25] text-white drop-shadow-[0_1px_6px_rgba(0,0,0,0.5)] sm:text-[26px] sm:leading-[1.3]"
             >
               {segment.translated.split(' ').map((w, i) => (
-                <motion.span key={i} variants={word}>
+                <motion.span
+                  key={i}
+                  variants={word}
+                  onClick={
+                    clickable
+                      ? () => {
+                          const clean = cleanWord(w);
+                          if (clean) onWordClick!(clean);
+                        }
+                      : undefined
+                  }
+                  className={clickable ? 'cursor-pointer rounded-sm transition-colors hover:bg-white/15' : undefined}
+                >
                   {w}
                 </motion.span>
               ))}

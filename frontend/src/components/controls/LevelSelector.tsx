@@ -35,7 +35,7 @@ export function LevelSelector({ level, onChange }: LevelSelectorProps) {
             title={LEVEL_HINTS[l]}
             onClick={() => onChange(l)}
             className={clsx(
-              'relative h-6 w-6 rounded-full text-[10.5px] font-medium transition-colors duration-150 sm:h-7 sm:w-9 sm:text-[12px]',
+              'relative h-[22px] w-[22px] rounded-full text-[10px] font-medium transition-colors duration-150 sm:h-7 sm:w-9 sm:text-[12px]',
               active ? 'text-[oklch(16%_0.012_265)]' : 'text-fg-secondary hover:text-fg',
             )}
           >

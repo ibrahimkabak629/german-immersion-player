@@ -156,10 +156,10 @@ body {
   cursor: pointer;
 }
 
-/* Gradient hairline border — wrap any element in .gradient-border and give
-   the child a solid background; the parent's ::before paints the border. */
+/* Gradient hairline border — the element also needs its own position
+   (relative/absolute/fixed) since this deliberately doesn't set one; forcing
+   `relative` here would silently override `fixed`/`absolute` on the same element. */
 .gradient-border {
-  position: relative;
   isolation: isolate;
 }
 .gradient-border::before {
