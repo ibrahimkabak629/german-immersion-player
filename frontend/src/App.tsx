@@ -20,16 +20,20 @@ import { GrammarPopover, type GrammarTarget } from './components/grammar/Grammar
 import { PostVideoPopup, type PracticeOption } from './components/popup/PostVideoPopup';
 import { PracticeModal } from './components/practice/PracticeModal';
 import { DailyChallenge } from './components/practice/DailyChallenge';
+import { LevelSuggestionPopup } from './components/practice/LevelSuggestionPopup';
+import { useLevelProgress } from './hooks/useLevelProgress';
+import { useLocalStorage } from './hooks/useLocalStorage';
 import { useVideoProcessing } from './hooks/useVideoProcessing';
 import { DEMO, DEMO_SEGMENTS, DEMO_TITLE, DEMO_VIDEO_URL } from './lib/demoFixture';
 import type { GermanLevel, Segment } from './types/segment';
 
 function AppContent() {
-  const [level, setLevel] = useState<GermanLevel>('B1');
+  const [level, setLevel] = useLocalStorage<GermanLevel>('gip-level', 'B1');
   const videoPlayerRef = useRef<VideoPlayerHandle>(null);
   const { state: processing, start, reset } = useVideoProcessing();
   const { settings, setSetting } = useSettings();
   const { wordBank, recordWatchedVideo } = useLearningData();
+  const { recordResult, suggestionFor, clearResultsFor, dismissLevel, neverSuggestAgain } = useLevelProgress();
 
   const [wordBankOpen, setWordBankOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -70,6 +74,8 @@ function AppContent() {
     setShowPostVideoPopup(false);
     setPracticeMode(option);
   }
+
+  const suggestedLevel = suggestionFor(level);
 
   let videoArea;
   if (DEMO) {
@@ -139,8 +145,18 @@ function AppContent() {
       <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <WordBankPanel open={wordBankOpen} onClose={() => setWordBankOpen(false)} />
       <HistoryPanel open={historyOpen} onClose={() => setHistoryOpen(false)} currentTitle={currentTitle} />
-      <DailyChallenge open={dailyChallengeOpen} onClose={() => setDailyChallengeOpen(false)} />
-      <PracticeModal mode={practiceMode} onClose={() => setPracticeMode(null)} segments={segments} wordBank={videoWordBank} />
+      <DailyChallenge
+        open={dailyChallengeOpen}
+        onClose={() => setDailyChallengeOpen(false)}
+        onFinish={(score, total) => recordResult(level, score, total)}
+      />
+      <PracticeModal
+        mode={practiceMode}
+        onClose={() => setPracticeMode(null)}
+        segments={segments}
+        wordBank={videoWordBank}
+        onQuizFinish={(score, total) => recordResult(level, score, total)}
+      />
       <GrammarPopover
         target={grammarTarget}
         onClose={() => setGrammarTarget(null)}
@@ -156,6 +172,20 @@ function AppContent() {
           setShowPostVideoPopup(false);
         }}
         onSelect={handlePracticeSelect}
+      />
+
+      <LevelSuggestionPopup
+        currentLevel={level}
+        suggestedLevel={suggestedLevel}
+        onAccept={() => {
+          clearResultsFor(level);
+          setLevel(suggestedLevel ?? level);
+        }}
+        onStay={() => clearResultsFor(level)}
+        onNeverAsk={() => {
+          dismissLevel(level);
+          neverSuggestAgain();
+        }}
       />
     </PlaybackProvider>
   );

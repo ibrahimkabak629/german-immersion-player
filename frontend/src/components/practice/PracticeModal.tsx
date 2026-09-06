@@ -12,6 +12,7 @@ interface PracticeModalProps {
   onClose: () => void;
   segments: Segment[];
   wordBank: WordBankEntry[];
+  onQuizFinish?: (score: number, total: number) => void;
 }
 
 const META: Record<PracticeOption, { title: string; icon: typeof BookOpen }> = {
@@ -21,7 +22,7 @@ const META: Record<PracticeOption, { title: string; icon: typeof BookOpen }> = {
   grammar: { title: 'Grammar Help', icon: HelpCircle },
 };
 
-export function PracticeModal({ mode, onClose, segments, wordBank }: PracticeModalProps) {
+export function PracticeModal({ mode, onClose, segments, wordBank, onQuizFinish }: PracticeModalProps) {
   const meta = mode ? META[mode] : null;
   const Icon = meta?.icon;
 
@@ -31,12 +32,14 @@ export function PracticeModal({ mode, onClose, segments, wordBank }: PracticeMod
       {mode === 'fill-blank' && (
         <QuizRunner
           questions={generateFillBlankQuestions(segments, 5)}
+          onFinish={onQuizFinish}
           emptyMessage="Not enough vocabulary in this video yet to build blanks — try a longer one."
         />
       )}
       {mode === 'quiz' && (
         <QuizRunner
           questions={generateMixedQuestions(segments, wordBank, 5)}
+          onFinish={onQuizFinish}
           emptyMessage="Watch a video first — quiz questions are built from what you've seen."
         />
       )}

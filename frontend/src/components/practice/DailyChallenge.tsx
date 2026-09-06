@@ -11,6 +11,7 @@ import type { GermanLevel } from '../../types/segment';
 interface DailyChallengeProps {
   open: boolean;
   onClose: () => void;
+  onFinish?: (score: number, total: number) => void;
 }
 
 function mostUsedLevel(levels: GermanLevel[]): GermanLevel | null {
@@ -20,7 +21,7 @@ function mostUsedLevel(levels: GermanLevel[]): GermanLevel | null {
   return [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0];
 }
 
-export function DailyChallenge({ open, onClose }: DailyChallengeProps) {
+export function DailyChallenge({ open, onClose, onFinish }: DailyChallengeProps) {
   const { history, wordBank } = useLearningData();
   const { settings } = useSettings();
   const { streak, completeToday } = useStreak();
@@ -47,7 +48,10 @@ export function DailyChallenge({ open, onClose }: DailyChallengeProps) {
       )}
       <QuizRunner
         questions={questions}
-        onFinish={() => completeToday()}
+        onFinish={(score, total) => {
+          completeToday();
+          onFinish?.(score, total);
+        }}
         emptyMessage="Watch a couple of videos first — your daily challenge is built from what you've watched."
       />
     </Modal>

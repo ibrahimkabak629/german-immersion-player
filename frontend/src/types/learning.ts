@@ -70,6 +70,28 @@ export interface StreakState {
   lastCompletedDate: string | null;
 }
 
+export interface QuizResult {
+  level: GermanLevel;
+  score: number;
+  total: number;
+  at: number;
+}
+
+export interface LevelProgressState {
+  /** Most recent results first, capped — drives the "ready to level up?" check. */
+  results: QuizResult[];
+  /** Levels the user asked never to be nudged about again. */
+  dismissedLevels: GermanLevel[];
+  /** Suppress suggestions entirely. */
+  neverSuggest: boolean;
+}
+
+export const DEFAULT_LEVEL_PROGRESS: LevelProgressState = {
+  results: [],
+  dismissedLevels: [],
+  neverSuggest: false,
+};
+
 export type ChallengeQuestionType = 'vocab' | 'fill-blank' | 'comprehension';
 
 export interface ChallengeQuestion {
