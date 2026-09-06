@@ -11,7 +11,7 @@ interface TranscriptPanelProps {
 }
 
 export function TranscriptPanel({ segments, onWordClick }: TranscriptPanelProps) {
-  const { currentTime, seekTo } = usePlayback();
+  const { currentTime, seekTo, replaySegment } = usePlayback();
   const { index: activeIndex } = useActiveSegment(segments, currentTime);
 
   const entryRefs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -64,6 +64,7 @@ export function TranscriptPanel({ segments, onWordClick }: TranscriptPanelProps)
               isActive={i === activeIndex}
               onClick={() => seekTo(segment.start)}
               onWordClick={(word) => onWordClick?.(word, segment)}
+              onReplay={() => replaySegment(segment.start)}
             />
           ))
         )}

@@ -42,7 +42,28 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
     seekTo(time: number) {
       if (videoRef.current) videoRef.current.currentTime = time;
     },
+    replaySegment(start: number) {
+      const video = videoRef.current;
+      if (!video) return;
+      video.currentTime = start;
+      void video.play();
+    },
   }));
+
+  // "R" replays the segment currently on screen — ignored while typing anywhere else.
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key.toLowerCase() !== 'r' || e.metaKey || e.ctrlKey || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+      if (!activeSegment || !videoRef.current) return;
+      e.preventDefault();
+      videoRef.current.currentTime = activeSegment.start;
+      void videoRef.current.play();
+    }
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeSegment]);
 
   useEffect(() => {
     setError(null);

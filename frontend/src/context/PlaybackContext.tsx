@@ -2,6 +2,7 @@ import { createContext, useContext, useMemo, useState, type ReactNode, type RefO
 
 export interface VideoPlayerHandle {
   seekTo: (time: number) => void;
+  replaySegment: (start: number) => void;
 }
 
 interface PlaybackContextValue {
@@ -12,6 +13,7 @@ interface PlaybackContextValue {
   setDuration: (d: number) => void;
   setIsPlaying: (p: boolean) => void;
   seekTo: (time: number) => void;
+  replaySegment: (start: number) => void;
 }
 
 const PlaybackContext = createContext<PlaybackContextValue | null>(null);
@@ -32,9 +34,14 @@ export function PlaybackProvider({
     [videoPlayerRef],
   );
 
+  const replaySegment = useMemo(
+    () => (start: number) => videoPlayerRef.current?.replaySegment(start),
+    [videoPlayerRef],
+  );
+
   return (
     <PlaybackContext.Provider
-      value={{ currentTime, duration, isPlaying, setCurrentTime, setDuration, setIsPlaying, seekTo }}
+      value={{ currentTime, duration, isPlaying, setCurrentTime, setDuration, setIsPlaying, seekTo, replaySegment }}
     >
       {children}
     </PlaybackContext.Provider>

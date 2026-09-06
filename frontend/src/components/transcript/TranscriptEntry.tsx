@@ -1,5 +1,6 @@
 import { forwardRef } from 'react';
 import { motion } from 'framer-motion';
+import { RotateCcw } from 'lucide-react';
 import clsx from 'clsx';
 import type { Segment } from '../../types/segment';
 import { ClickableGermanText } from '../grammar/ClickableGermanText';
@@ -15,10 +16,11 @@ interface TranscriptEntryProps {
   isActive: boolean;
   onClick: () => void;
   onWordClick?: (word: string) => void;
+  onReplay: () => void;
 }
 
 export const TranscriptEntry = forwardRef<HTMLButtonElement, TranscriptEntryProps>(function TranscriptEntry(
-  { segment, isActive, onClick, onWordClick },
+  { segment, isActive, onClick, onWordClick, onReplay },
   ref,
 ) {
   return (
@@ -27,7 +29,7 @@ export const TranscriptEntry = forwardRef<HTMLButtonElement, TranscriptEntryProp
       type="button"
       onClick={onClick}
       className={clsx(
-        'group relative flex w-full gap-3 rounded-[var(--radius-md)] py-2.5 pl-4 pr-3 text-left transition-colors duration-150',
+        'group relative flex w-full gap-3 rounded-[var(--radius-md)] py-2.5 pl-4 pr-8 text-left transition-colors duration-150',
         isActive ? 'bg-accent-soft' : 'hover:bg-bg-elevated-2',
       )}
     >
@@ -67,6 +69,26 @@ export const TranscriptEntry = forwardRef<HTMLButtonElement, TranscriptEntryProp
         </p>
         <p className="mt-0.5 line-clamp-2 break-words text-[12.5px] leading-snug text-fg-muted">{segment.original}</p>
       </div>
+
+      <motion.button
+        type="button"
+        title="Replay this line (R)"
+        aria-label="Replay this line"
+        onClick={(e) => {
+          e.stopPropagation();
+          onReplay();
+        }}
+        whileHover={{ scale: 1.2 }}
+        whileTap={{ scale: 0.88 }}
+        className={clsx(
+          'absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full transition-colors',
+          isActive
+            ? 'replay-hint-active text-accent hover:bg-accent-soft'
+            : 'replay-hint text-fg-muted hover:bg-bg-elevated-2 hover:text-fg-secondary',
+        )}
+      >
+        <RotateCcw size={13} strokeWidth={2} />
+      </motion.button>
     </button>
   );
 });

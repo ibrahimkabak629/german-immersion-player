@@ -199,3 +199,21 @@ body {
     transform: translateX(250%) skewX(-15deg);
   }
 }
+
+/* Subtle idle hint on the transcript's replay buttons — a slow opacity
+   breathe rather than motion, so it reads calmly even across many rows. */
+@keyframes replay-hint {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}
+.replay-hint {
+  animation: replay-hint 2.8s ease-in-out infinite;
+}
+.replay-hint-active {
+  animation: replay-hint 1.6s ease-in-out infinite;
+}
