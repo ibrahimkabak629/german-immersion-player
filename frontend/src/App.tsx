@@ -14,6 +14,8 @@ import { TranscriptPanel } from './components/transcript/TranscriptPanel';
 import { AITutorChat } from './components/tutor/AITutorChat';
 import { SettingsPanel } from './components/settings/SettingsPanel';
 import { WordBankPanel } from './components/wordbank/WordBankPanel';
+import { HistoryPanel } from './components/history/HistoryPanel';
+import { VideoSessionManager } from './components/video/VideoSessionManager';
 import { GrammarPopover, type GrammarTarget } from './components/grammar/GrammarPopover';
 import { PostVideoPopup, type PracticeOption } from './components/popup/PostVideoPopup';
 import { PracticeModal } from './components/practice/PracticeModal';
@@ -30,6 +32,7 @@ function AppContent() {
   const { wordBank, recordWatchedVideo } = useLearningData();
 
   const [wordBankOpen, setWordBankOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [dailyChallengeOpen, setDailyChallengeOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [practiceMode, setPracticeMode] = useState<PracticeOption | null>(null);
@@ -115,6 +118,7 @@ function AppContent() {
             level={level}
             onLevelChange={setLevel}
             onWordBank={() => setWordBankOpen(true)}
+            onHistory={() => setHistoryOpen(true)}
             onDailyChallenge={() => setDailyChallengeOpen(true)}
             onSettings={() => setSettingsOpen(true)}
           />
@@ -125,12 +129,16 @@ function AppContent() {
         }
         tutorPanel={<AITutorChat level={level} segments={segments} />}
         onWordBank={() => setWordBankOpen(true)}
+        onHistory={() => setHistoryOpen(true)}
         onDailyChallenge={() => setDailyChallengeOpen(true)}
         onSettings={() => setSettingsOpen(true)}
       />
 
+      {currentTitle && <VideoSessionManager title={currentTitle} />}
+
       <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <WordBankPanel open={wordBankOpen} onClose={() => setWordBankOpen(false)} />
+      <HistoryPanel open={historyOpen} onClose={() => setHistoryOpen(false)} currentTitle={currentTitle} />
       <DailyChallenge open={dailyChallengeOpen} onClose={() => setDailyChallengeOpen(false)} />
       <PracticeModal mode={practiceMode} onClose={() => setPracticeMode(null)} segments={segments} wordBank={videoWordBank} />
       <GrammarPopover

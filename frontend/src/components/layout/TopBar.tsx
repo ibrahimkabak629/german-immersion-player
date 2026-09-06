@@ -8,11 +8,12 @@ interface TopBarProps {
   level: GermanLevel;
   onLevelChange: (level: GermanLevel) => void;
   onWordBank: () => void;
+  onHistory: () => void;
   onDailyChallenge: () => void;
   onSettings: () => void;
 }
 
-export function TopBar({ level, onLevelChange, onWordBank, onDailyChallenge, onSettings }: TopBarProps) {
+export function TopBar({ level, onLevelChange, onWordBank, onHistory, onDailyChallenge, onSettings }: TopBarProps) {
   return (
     <header className="relative flex h-14 shrink-0 items-center justify-between border-b border-border bg-bg px-4 sm:px-5">
       <div className="flex items-center gap-2.5">
@@ -29,7 +30,7 @@ export function TopBar({ level, onLevelChange, onWordBank, onDailyChallenge, onS
         <LevelSelector level={level} onChange={onLevelChange} />
         <div className="hidden h-5 w-px bg-border sm:mx-1 sm:block" />
         <div className="lg:hidden">
-          <NavMenu variant="menu" onWordBank={onWordBank} onDailyChallenge={onDailyChallenge} onSettings={onSettings} />
+          <NavMenu variant="menu" onWordBank={onWordBank} onHistory={onHistory} onDailyChallenge={onDailyChallenge} onSettings={onSettings} />
         </div>
         <ThemeToggle />
       </div>

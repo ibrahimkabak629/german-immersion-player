@@ -1,26 +1,29 @@
 import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { BookMarked, Menu, SlidersHorizontal, Sparkles } from 'lucide-react';
+import { BookMarked, History, Menu, SlidersHorizontal, Sparkles } from 'lucide-react';
 import clsx from 'clsx';
 
 interface NavMenuProps {
   variant: 'rail' | 'menu';
   onWordBank: () => void;
+  onHistory: () => void;
   onDailyChallenge: () => void;
   onSettings: () => void;
 }
 
 const ITEMS = [
   { key: 'wordBank', label: 'Word Bank', icon: BookMarked },
+  { key: 'history', label: 'Watch History', icon: History },
   { key: 'dailyChallenge', label: 'Daily Challenge', icon: Sparkles },
   { key: 'settings', label: 'Settings', icon: SlidersHorizontal },
 ] as const;
 
-export function NavMenu({ variant, onWordBank, onDailyChallenge, onSettings }: NavMenuProps) {
+export function NavMenu({ variant, onWordBank, onHistory, onDailyChallenge, onSettings }: NavMenuProps) {
   const [open, setOpen] = useState(false);
 
   const actions: Record<(typeof ITEMS)[number]['key'], () => void> = {
     wordBank: onWordBank,
+    history: onHistory,
     dailyChallenge: onDailyChallenge,
     settings: onSettings,
   };

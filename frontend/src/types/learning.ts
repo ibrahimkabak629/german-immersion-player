@@ -57,6 +57,12 @@ export interface WatchHistoryEntry {
   level: GermanLevel;
   completedAt: number;
   segments: Segment[];
+  /** Best known duration — last segment's end until real metadata arrives. */
+  durationSeconds: number;
+  /** Where the user left off, for resuming. */
+  lastPositionSeconds: number;
+  /** Furthest point ever reached — drives the % watched display. */
+  furthestSeconds: number;
 }
 
 export interface StreakState {

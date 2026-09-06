@@ -11,6 +11,8 @@ interface LearningDataContextValue {
   wordBank: WordBankEntry[];
   history: WatchHistoryEntry[];
   recordWatchedVideo: (title: string, level: GermanLevel, segments: Segment[]) => void;
+  updateWatchProgress: (title: string, positionSeconds: number, durationSeconds?: number) => void;
+  deleteHistoryEntry: (id: string) => void;
   upsertWord: (word: string, sentence: { german: string; english: string }, level: GermanLevel, videoTitle: string) => void;
   toggleLearned: (key: string) => void;
   toggleStarred: (key: string) => void;
@@ -28,14 +30,18 @@ export function LearningDataProvider({ children }: { children: ReactNode }) {
       if (segments.length === 0) return;
 
       setHistory((prev) => {
+        const existing = prev.find((e) => e.title === title);
         const entry: WatchHistoryEntry = {
-          id: `${Date.now()}`,
+          id: existing?.id ?? `${Date.now()}`,
           title,
           level,
           completedAt: Date.now(),
           segments: segments.slice(0, MAX_SEGMENTS_PER_ENTRY),
+          durationSeconds: segments[segments.length - 1]?.end ?? existing?.durationSeconds ?? 0,
+          lastPositionSeconds: existing?.lastPositionSeconds ?? 0,
+          furthestSeconds: existing?.furthestSeconds ?? 0,
         };
-        return [entry, ...prev].slice(0, MAX_HISTORY_ENTRIES);
+        return [entry, ...prev.filter((e) => e.title !== title)].slice(0, MAX_HISTORY_ENTRIES);
       });
 
       setWordBank((prev) => {
@@ -62,6 +68,31 @@ export function LearningDataProvider({ children }: { children: ReactNode }) {
       });
     },
     [setHistory, setWordBank],
+  );
+
+  const updateWatchProgress = useCallback(
+    (title: string, positionSeconds: number, durationSeconds?: number) => {
+      setHistory((prev) =>
+        prev.map((entry) =>
+          entry.title === title
+            ? {
+                ...entry,
+                lastPositionSeconds: positionSeconds,
+                furthestSeconds: Math.max(entry.furthestSeconds ?? 0, positionSeconds),
+                durationSeconds: durationSeconds && durationSeconds > 0 ? durationSeconds : entry.durationSeconds,
+              }
+            : entry,
+        ),
+      );
+    },
+    [setHistory],
+  );
+
+  const deleteHistoryEntry = useCallback(
+    (id: string) => {
+      setHistory((prev) => prev.filter((entry) => entry.id !== id));
+    },
+    [setHistory],
   );
 
   const upsertWord = useCallback(
@@ -112,7 +143,17 @@ export function LearningDataProvider({ children }: { children: ReactNode }) {
 
   return (
     <LearningDataContext.Provider
-      value={{ wordBank, history, recordWatchedVideo, upsertWord, toggleLearned, toggleStarred, setTranslation }}
+      value={{
+        wordBank,
+        history,
+        recordWatchedVideo,
+        updateWatchProgress,
+        deleteHistoryEntry,
+        upsertWord,
+        toggleLearned,
+        toggleStarred,
+        setTranslation,
+      }}
     >
       {children}
     </LearningDataContext.Provider>

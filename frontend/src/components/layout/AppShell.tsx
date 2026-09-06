@@ -9,19 +9,20 @@ interface AppShellProps {
   transcriptPanel: ReactNode;
   tutorPanel: ReactNode;
   onWordBank: () => void;
+  onHistory: () => void;
   onDailyChallenge: () => void;
   onSettings: () => void;
 }
 
 type MobileTab = 'transcript' | 'tutor';
 
-export function AppShell({ topBar, videoArea, transcriptPanel, tutorPanel, onWordBank, onDailyChallenge, onSettings }: AppShellProps) {
+export function AppShell({ topBar, videoArea, transcriptPanel, tutorPanel, onWordBank, onHistory, onDailyChallenge, onSettings }: AppShellProps) {
   const [mobileTab, setMobileTab] = useState<MobileTab>('transcript');
 
   return (
     <div className="flex h-screen bg-bg">
       <div className="hidden lg:flex">
-        <NavMenu variant="rail" onWordBank={onWordBank} onDailyChallenge={onDailyChallenge} onSettings={onSettings} />
+        <NavMenu variant="rail" onWordBank={onWordBank} onHistory={onHistory} onDailyChallenge={onDailyChallenge} onSettings={onSettings} />
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col">
