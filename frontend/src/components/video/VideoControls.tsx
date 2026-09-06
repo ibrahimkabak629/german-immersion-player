@@ -1,6 +1,7 @@
 import { Maximize, Pause, Play, Volume2, VolumeX } from 'lucide-react';
 import { IconButton } from '../ui/IconButton';
 import { PlaybackSpeedControl } from './PlaybackSpeedControl';
+import { SubtitleDelayControl } from './SubtitleDelayControl';
 
 function formatTime(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
@@ -15,11 +16,13 @@ interface VideoControlsProps {
   duration: number;
   muted: boolean;
   playbackRate: number;
+  subtitleOffset: number;
   onPlayPause: () => void;
   onSeek: (time: number) => void;
   onToggleMute: () => void;
   onFullscreen: () => void;
   onRateChange: (rate: number) => void;
+  onSubtitleOffsetChange: (offset: number | ((prev: number) => number)) => void;
 }
 
 export function VideoControls({
@@ -28,11 +31,13 @@ export function VideoControls({
   duration,
   muted,
   playbackRate,
+  subtitleOffset,
   onPlayPause,
   onSeek,
   onToggleMute,
   onFullscreen,
   onRateChange,
+  onSubtitleOffsetChange,
 }: VideoControlsProps) {
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
@@ -74,6 +79,7 @@ export function VideoControls({
         </div>
 
         <div className="flex items-center gap-0.5 sm:gap-1">
+          <SubtitleDelayControl offset={subtitleOffset} onChange={onSubtitleOffsetChange} />
           <PlaybackSpeedControl rate={playbackRate} onChange={onRateChange} />
           <IconButton label="Fullscreen" onClick={onFullscreen} className="text-white hover:bg-white/10 hover:text-white active:scale-90">
             <Maximize size={15} strokeWidth={1.75} />

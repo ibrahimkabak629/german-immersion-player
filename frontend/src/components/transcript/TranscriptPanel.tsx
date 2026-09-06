@@ -11,8 +11,8 @@ interface TranscriptPanelProps {
 }
 
 export function TranscriptPanel({ segments, onWordClick }: TranscriptPanelProps) {
-  const { currentTime, seekTo, replaySegment } = usePlayback();
-  const { index: activeIndex } = useActiveSegment(segments, currentTime);
+  const { currentTime, subtitleOffset, seekTo, replaySegment } = usePlayback();
+  const { index: activeIndex } = useActiveSegment(segments, currentTime - subtitleOffset);
 
   const entryRefs = useRef<(HTMLDivElement | null)[]>([]);
   const userScrollingRef = useRef(false);

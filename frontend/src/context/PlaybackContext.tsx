@@ -13,11 +13,14 @@ interface PlaybackContextValue {
   isPlaying: boolean;
   playbackRate: number;
   mode: LearningMode;
+  /** Display-only shift for subtitles/transcript sync, in seconds (video and audio untouched). */
+  subtitleOffset: number;
   setCurrentTime: (t: number) => void;
   setDuration: (d: number) => void;
   setIsPlaying: (p: boolean) => void;
   setPlaybackRate: (rate: number | ((prev: number) => number)) => void;
   setMode: (mode: LearningMode | ((prev: LearningMode) => LearningMode)) => void;
+  setSubtitleOffset: (offset: number | ((prev: number) => number)) => void;
   seekTo: (time: number) => void;
   replaySegment: (start: number) => void;
 }
@@ -36,6 +39,8 @@ export function PlaybackProvider({
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackRate, setPlaybackRate] = useLocalStorage<number>('gip-playback-rate', 1);
   const [mode, setMode] = useLocalStorage<LearningMode>('gip-learning-mode', 'reading');
+  // Per-video persistence lives in VideoSessionManager; this is just the live value.
+  const [subtitleOffset, setSubtitleOffset] = useState(0);
 
   const seekTo = useMemo(
     () => (time: number) => videoPlayerRef.current?.seekTo(time),
@@ -55,11 +60,13 @@ export function PlaybackProvider({
         isPlaying,
         playbackRate,
         mode,
+        subtitleOffset,
         setCurrentTime,
         setDuration,
         setIsPlaying,
         setPlaybackRate,
         setMode,
+        setSubtitleOffset,
         seekTo,
         replaySegment,
       }}

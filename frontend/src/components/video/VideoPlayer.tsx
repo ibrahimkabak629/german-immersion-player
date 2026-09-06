@@ -45,13 +45,17 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
     isPlaying,
     playbackRate,
     mode,
+    subtitleOffset,
     setCurrentTime,
     setDuration,
     setIsPlaying,
     setPlaybackRate,
     setMode,
+    setSubtitleOffset,
   } = usePlayback();
-  const { segment: activeSegment } = useActiveSegment(segments, currentTime);
+  // Subtitle offset shifts DISPLAY timing only: audio/video keep real time,
+  // but the "active" segment is looked up at (time - offset).
+  const { segment: activeSegment } = useActiveSegment(segments, currentTime - subtitleOffset);
 
   const objectUrl = useObjectUrl(source?.kind === 'file' ? source.file : null);
   const resolvedSrc = source?.kind === 'file' ? objectUrl : source?.kind === 'url' ? source.url : null;
@@ -281,11 +285,13 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
         duration={duration}
         muted={muted}
         playbackRate={playbackRate}
+        subtitleOffset={subtitleOffset}
         onPlayPause={handlePlayPause}
         onSeek={handleSeek}
         onToggleMute={handleToggleMute}
         onFullscreen={handleFullscreen}
         onRateChange={setPlaybackRate}
+        onSubtitleOffsetChange={setSubtitleOffset}
       />
       </div>
     </div>
