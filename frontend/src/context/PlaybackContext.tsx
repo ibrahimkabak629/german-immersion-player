@@ -1,4 +1,5 @@
 import { createContext, useContext, useMemo, useState, type ReactNode, type RefObject } from 'react';
+import { useLocalStorage } from '../hooks/useLocalStorage';
 
 export interface VideoPlayerHandle {
   seekTo: (time: number) => void;
@@ -9,9 +10,11 @@ interface PlaybackContextValue {
   currentTime: number;
   duration: number;
   isPlaying: boolean;
+  playbackRate: number;
   setCurrentTime: (t: number) => void;
   setDuration: (d: number) => void;
   setIsPlaying: (p: boolean) => void;
+  setPlaybackRate: (rate: number | ((prev: number) => number)) => void;
   seekTo: (time: number) => void;
   replaySegment: (start: number) => void;
 }
@@ -28,6 +31,7 @@ export function PlaybackProvider({
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [playbackRate, setPlaybackRate] = useLocalStorage<number>('gip-playback-rate', 1);
 
   const seekTo = useMemo(
     () => (time: number) => videoPlayerRef.current?.seekTo(time),
@@ -41,7 +45,18 @@ export function PlaybackProvider({
 
   return (
     <PlaybackContext.Provider
-      value={{ currentTime, duration, isPlaying, setCurrentTime, setDuration, setIsPlaying, seekTo, replaySegment }}
+      value={{
+        currentTime,
+        duration,
+        isPlaying,
+        playbackRate,
+        setCurrentTime,
+        setDuration,
+        setIsPlaying,
+        setPlaybackRate,
+        seekTo,
+        replaySegment,
+      }}
     >
       {children}
     </PlaybackContext.Provider>

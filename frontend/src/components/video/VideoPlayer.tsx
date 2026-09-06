@@ -5,6 +5,7 @@ import { usePlayback } from '../../context/PlaybackContext';
 import type { VideoPlayerHandle } from '../../context/PlaybackContext';
 import { useActiveSegment } from '../../hooks/useActiveSegment';
 import { useObjectUrl } from '../../hooks/useObjectUrl';
+import { stepSpeed } from '../../lib/playbackSpeed';
 import { SubtitleOverlay } from './SubtitleOverlay';
 import { VideoControls } from './VideoControls';
 import { VideoErrorBanner } from './VideoErrorBanner';
@@ -32,7 +33,8 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
   const [muted, setMuted] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { currentTime, duration, isPlaying, setCurrentTime, setDuration, setIsPlaying } = usePlayback();
+  const { currentTime, duration, isPlaying, playbackRate, setCurrentTime, setDuration, setIsPlaying, setPlaybackRate } =
+    usePlayback();
   const { segment: activeSegment } = useActiveSegment(segments, currentTime);
 
   const objectUrl = useObjectUrl(source?.kind === 'file' ? source.file : null);
@@ -50,20 +52,37 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
     },
   }));
 
-  // "R" replays the segment currently on screen — ignored while typing anywhere else.
+  // "R" replays the segment currently on screen, "<"/">" nudge playback speed —
+  // both ignored while typing anywhere else.
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key.toLowerCase() !== 'r' || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
-      if (!activeSegment || !videoRef.current) return;
-      e.preventDefault();
-      videoRef.current.currentTime = activeSegment.start;
-      void videoRef.current.play();
+
+      if (e.key.toLowerCase() === 'r') {
+        if (!activeSegment || !videoRef.current) return;
+        e.preventDefault();
+        videoRef.current.currentTime = activeSegment.start;
+        void videoRef.current.play();
+        return;
+      }
+
+      if (e.key === '<' || e.key === '>') {
+        e.preventDefault();
+        setPlaybackRate((prev) => stepSpeed(prev, e.key === '<' ? -1 : 1));
+      }
     }
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeSegment]);
+  }, [activeSegment, setPlaybackRate]);
+
+  // Keep the element's actual rate in sync with the saved preference, including
+  // right after a new source loads (playbackRate is a property of the element,
+  // not the resource, but we reassert it here to be safe across browsers).
+  useEffect(() => {
+    if (videoRef.current) videoRef.current.playbackRate = playbackRate;
+  }, [playbackRate, resolvedSrc]);
 
   useEffect(() => {
     setError(null);
@@ -185,10 +204,12 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
         currentTime={currentTime}
         duration={duration}
         muted={muted}
+        playbackRate={playbackRate}
         onPlayPause={handlePlayPause}
         onSeek={handleSeek}
         onToggleMute={handleToggleMute}
         onFullscreen={handleFullscreen}
+        onRateChange={setPlaybackRate}
       />
       </div>
     </div>
