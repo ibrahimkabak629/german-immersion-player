@@ -19,6 +19,7 @@ import { PostVideoPopup, type PracticeOption } from './components/popup/PostVide
 import { PracticeModal } from './components/practice/PracticeModal';
 import { DailyChallenge } from './components/practice/DailyChallenge';
 import { useVideoProcessing } from './hooks/useVideoProcessing';
+import { DEMO, DEMO_SEGMENTS, DEMO_TITLE, DEMO_VIDEO_URL } from './lib/demoFixture';
 import type { GermanLevel, Segment } from './types/segment';
 
 function AppContent() {
@@ -35,10 +36,17 @@ function AppContent() {
   const [grammarTarget, setGrammarTarget] = useState<GrammarTarget | null>(null);
   const [showPostVideoPopup, setShowPostVideoPopup] = useState(false);
 
-  const segments = processing.status === 'ready' ? processing.segments : [];
+  const segments = DEMO ? DEMO_SEGMENTS : processing.status === 'ready' ? processing.segments : [];
   const recordedRef = useRef<string | null>(null);
 
   useEffect(() => {
+    if (DEMO) {
+      if (recordedRef.current !== 'demo' && settings.wordBank) {
+        recordedRef.current = 'demo';
+        recordWatchedVideo(DEMO_TITLE, level, DEMO_SEGMENTS);
+      }
+      return;
+    }
     if (processing.status !== 'ready' || !settings.wordBank) return;
     const key = processing.videoFile.name + processing.segments.length;
     if (recordedRef.current === key) return;
@@ -61,7 +69,18 @@ function AppContent() {
   }
 
   let videoArea;
-  if (processing.status === 'ready') {
+  if (DEMO) {
+    videoArea = (
+      <VideoPlayer
+        ref={videoPlayerRef}
+        source={{ kind: 'url', url: DEMO_VIDEO_URL }}
+        segments={DEMO_SEGMENTS}
+        onSourceChange={reset}
+        onWordClick={settings.grammarExplainer ? handleWordClick : undefined}
+        onEnded={handleVideoEnded}
+      />
+    );
+  } else if (processing.status === 'ready') {
     videoArea = (
       <div className="flex h-full flex-col gap-3">
         <div className="min-h-0 flex-1">
@@ -85,7 +104,7 @@ function AppContent() {
     videoArea = <VideoSourceBar onSourceChange={(source) => start(source, level)} />;
   }
 
-  const currentTitle = processing.status === 'ready' ? processing.title : null;
+  const currentTitle = DEMO ? DEMO_TITLE : processing.status === 'ready' ? processing.title : null;
   const videoWordBank = currentTitle ? wordBank.filter((e) => e.videoTitle === currentTitle) : [];
 
   return (
