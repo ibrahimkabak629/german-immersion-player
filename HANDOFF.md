@@ -68,3 +68,40 @@ In order:
 - **Frontend stack**: Vite + React + TypeScript + Tailwind v4, **no component library** (no shadcn/Radix/MUI) — hand-rolled primitives, chosen specifically to avoid a "generic AI-generated UI" look, per explicit request. Fraunces (serif) for display/subtitle text + Geist for UI text, warm amber accent instead of indigo/violet, hairline borders over drop shadows.
 - **Frontend scope**: standalone UI shell with mock data this pass, **not wired to a backend** — an explicit, discussed tradeoff (see next-steps §3) to get the design right before backend integration, rather than building both at once.
 - **Frontend segment shape**: `frontend/src/types/segment.ts`'s `Segment` type intentionally mirrors `subtitle_sync.py`'s output shape (`start`, `end`, `original`, `translated`) so backend wiring later is a data-source swap, not a type rewrite.
+
+## 6. Day 3 Plan
+
+Core improvements to complete, in order:
+
+### 1. UI Redesign (Priority 1)
+- Complete premium redesign using 21st.dev MCP components
+- Make it look like Linear/Vercel/Raycast quality
+- Fix the "AI coded" look completely
+- Dark/light mode polish
+- Mobile responsive
+
+### 2. Word-Level Subtitle Highlighting (Priority 2)
+- Each word highlights in the subtitle as it is spoken
+- Requires word-level timestamps from Groq Whisper
+- This is the killer learning feature
+
+### 3. Speaker Diarization (Priority 3)
+- Detect who is speaking at each moment
+- Assign different cloned voices per speaker
+- Essential for multi-speaker videos
+
+### 4. Context-Aware Translation (Priority 4)
+- Pass full video transcript as context to DeepL/Groq
+- Keep terminology consistent across whole video
+- Fix slang and context mistakes
+
+### 5. Job Queue System (Priority 5)
+- Handle multiple videos processing at once
+- Prevent server crashes under load
+- Show position in queue to user
+
+### 6. Progress Dashboard (Priority 6)
+- Words learned tracker
+- Minutes watched
+- CEFR level progress
+- Streak tracking
