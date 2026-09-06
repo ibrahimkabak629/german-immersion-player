@@ -19,17 +19,24 @@ interface TranscriptEntryProps {
   onReplay: () => void;
 }
 
-export const TranscriptEntry = forwardRef<HTMLButtonElement, TranscriptEntryProps>(function TranscriptEntry(
+export const TranscriptEntry = forwardRef<HTMLDivElement, TranscriptEntryProps>(function TranscriptEntry(
   { segment, isActive, onClick, onWordClick, onReplay },
   ref,
 ) {
   return (
-    <button
+    <div
       ref={ref}
-      type="button"
+      role="button"
+      tabIndex={0}
       onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onClick();
+        }
+      }}
       className={clsx(
-        'group relative flex w-full gap-3 rounded-[var(--radius-md)] py-2.5 pl-4 pr-8 text-left transition-colors duration-150',
+        'group relative flex w-full cursor-pointer gap-3 rounded-[var(--radius-md)] py-2.5 pl-4 pr-8 text-left transition-colors duration-150',
         isActive ? 'bg-accent-soft' : 'hover:bg-bg-elevated-2',
       )}
     >
@@ -89,6 +96,6 @@ export const TranscriptEntry = forwardRef<HTMLButtonElement, TranscriptEntryProp
       >
         <RotateCcw size={13} strokeWidth={2} />
       </motion.button>
-    </button>
+    </div>
   );
 });

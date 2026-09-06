@@ -14,7 +14,7 @@ export function TranscriptPanel({ segments, onWordClick }: TranscriptPanelProps)
   const { currentTime, seekTo, replaySegment } = usePlayback();
   const { index: activeIndex } = useActiveSegment(segments, currentTime);
 
-  const entryRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const entryRefs = useRef<(HTMLDivElement | null)[]>([]);
   const userScrollingRef = useRef(false);
   const userScrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isFirstRender = useRef(true);
