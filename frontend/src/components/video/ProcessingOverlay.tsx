@@ -1,6 +1,7 @@
 import { Check, Loader2 } from 'lucide-react';
 import clsx from 'clsx';
 import type { ProcessingStep } from '../../hooks/useVideoProcessing';
+import { Logo } from '../ui/Logo';
 
 const STEPS: { key: ProcessingStep; label: string }[] = [
   { key: 'extracting_audio', label: 'Extracting audio' },
@@ -16,14 +17,17 @@ interface ProcessingOverlayProps {
 
 export function ProcessingOverlay({ step }: ProcessingOverlayProps) {
   const activeIndex = step ? STEPS.findIndex((s) => s.key === step) : -1;
+  const progress = activeIndex === -1 ? 0.04 : (activeIndex + 1) / STEPS.length;
 
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-5 rounded-[var(--radius-xl)] border border-border bg-bg-elevated p-10">
-      <div className="flex h-14 w-14 items-center justify-center rounded-full bg-accent-soft text-accent">
-        <Loader2 size={26} strokeWidth={1.75} className="animate-spin" />
+    <div className="relative flex h-full flex-col items-center justify-center gap-6 overflow-hidden rounded-[var(--radius-xl)] border border-border bg-bg-elevated p-10 shadow-[var(--shadow-card)]">
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-canvas-grid opacity-50" />
+
+      <div className="relative animate-pulse rounded-2xl bg-bg-elevated-2 p-3">
+        <Logo size={32} />
       </div>
 
-      <div className="w-full max-w-xs space-y-2.5">
+      <div className="relative w-full max-w-xs space-y-2.5">
         {STEPS.map((s, i) => {
           const isDone = activeIndex > i || step === 'done';
           const isActive = activeIndex === i;
@@ -37,7 +41,7 @@ export function ProcessingOverlay({ step }: ProcessingOverlayProps) {
             >
               <span
                 className={clsx(
-                  'flex h-5 w-5 shrink-0 items-center justify-center rounded-full border',
+                  'flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition-colors',
                   isDone ? 'border-accent bg-accent-soft text-accent' : isActive ? 'border-accent text-accent' : 'border-border',
                 )}
               >
@@ -49,7 +53,14 @@ export function ProcessingOverlay({ step }: ProcessingOverlayProps) {
         })}
       </div>
 
-      <p className="text-xs text-fg-muted">{activeIndex === -1 ? 'Starting…' : 'This can take a minute or two.'}</p>
+      <div className="relative h-1 w-full max-w-xs overflow-hidden rounded-full bg-bg-elevated-2">
+        <div
+          className="h-full rounded-full bg-accent transition-[width] duration-500 ease-out"
+          style={{ width: `${progress * 100}%` }}
+        />
+      </div>
+
+      <p className="relative text-xs text-fg-muted">{activeIndex === -1 ? 'Starting…' : 'This can take a minute or two.'}</p>
     </div>
   );
 }

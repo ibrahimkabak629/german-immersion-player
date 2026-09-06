@@ -10,7 +10,7 @@ interface DownloadBarProps {
 
 export function DownloadBar({ videoFile, srtBlob }: DownloadBarProps) {
   return (
-    <div className="flex shrink-0 flex-wrap items-center gap-2.5 rounded-[var(--radius-md)] border border-border bg-bg-elevated px-3.5 py-2.5">
+    <div className="flex shrink-0 flex-wrap items-center gap-2.5 rounded-[var(--radius-md)] border border-border bg-bg-elevated px-3.5 py-2.5 shadow-[var(--shadow-card)]">
       <Button variant="primary" onClick={() => downloadBlob(videoFile, 'dubbed_video.mp4')}>
         <Video size={14} strokeWidth={1.75} />
         Download video

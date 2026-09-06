@@ -32,7 +32,7 @@ export function VideoControls({
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
-    <div className="absolute inset-x-3 bottom-3 z-10 rounded-[var(--radius-lg)] border border-white/10 bg-black/40 px-3 py-2.5 backdrop-blur-md">
+    <div className="absolute inset-x-2 bottom-2 z-10 rounded-[var(--radius-lg)] border border-white/10 bg-black/50 px-3 py-2.5 shadow-[0_8px_24px_-8px_rgba(0,0,0,0.6)] backdrop-blur-md sm:inset-x-3 sm:bottom-3">
       <input
         type="range"
         min={0}
@@ -48,19 +48,27 @@ export function VideoControls({
       />
 
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1">
-          <IconButton label={isPlaying ? 'Pause' : 'Play'} onClick={onPlayPause} className="text-white hover:text-white hover:bg-white/10">
+        <div className="flex items-center gap-0.5 sm:gap-1">
+          <IconButton
+            label={isPlaying ? 'Pause' : 'Play'}
+            onClick={onPlayPause}
+            className="text-white hover:bg-white/10 hover:text-white active:scale-90"
+          >
             {isPlaying ? <Pause size={16} strokeWidth={1.75} /> : <Play size={16} strokeWidth={1.75} />}
           </IconButton>
-          <IconButton label={muted ? 'Unmute' : 'Mute'} onClick={onToggleMute} className="text-white hover:text-white hover:bg-white/10">
+          <IconButton
+            label={muted ? 'Unmute' : 'Mute'}
+            onClick={onToggleMute}
+            className="text-white hover:bg-white/10 hover:text-white active:scale-90"
+          >
             {muted ? <VolumeX size={16} strokeWidth={1.75} /> : <Volume2 size={16} strokeWidth={1.75} />}
           </IconButton>
-          <span className="ml-1 font-[family-name:var(--font-mono)] text-xs text-white/70">
+          <span className="ml-1 font-[family-name:var(--font-mono)] text-[11px] tabular-nums text-white/70 sm:text-xs">
             {formatTime(currentTime)} / {formatTime(duration)}
           </span>
         </div>
 
-        <IconButton label="Fullscreen" onClick={onFullscreen} className="text-white hover:text-white hover:bg-white/10">
+        <IconButton label="Fullscreen" onClick={onFullscreen} className="text-white hover:bg-white/10 hover:text-white active:scale-90">
           <Maximize size={15} strokeWidth={1.75} />
         </IconButton>
       </div>

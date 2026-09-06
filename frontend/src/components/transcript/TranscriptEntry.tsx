@@ -1,4 +1,5 @@
 import { forwardRef } from 'react';
+import { motion } from 'framer-motion';
 import clsx from 'clsx';
 import type { Segment } from '../../types/segment';
 
@@ -24,23 +25,41 @@ export const TranscriptEntry = forwardRef<HTMLButtonElement, TranscriptEntryProp
       type="button"
       onClick={onClick}
       className={clsx(
-        'flex w-full gap-3 rounded-[var(--radius-md)] border-l-[3px] px-3 py-2.5 text-left transition-colors duration-150',
-        isActive ? 'border-accent bg-accent-soft' : 'border-transparent hover:bg-bg-elevated-2',
+        'group relative flex w-full gap-3 rounded-[var(--radius-md)] py-2.5 pl-4 pr-3 text-left transition-colors duration-150',
+        isActive ? 'bg-accent-soft' : 'hover:bg-bg-elevated-2',
       )}
     >
-      <span className="mt-0.5 shrink-0 font-[family-name:var(--font-mono)] text-[11px] text-fg-muted">
+      {/* timeline rail */}
+      <span className="absolute bottom-0.5 left-1.5 top-0.5 w-px bg-border" aria-hidden="true" />
+      <span
+        className={clsx(
+          'absolute left-0 top-3.5 h-[7px] w-[7px] rounded-full border-2 transition-colors',
+          isActive ? 'border-accent bg-accent' : 'border-border bg-bg group-hover:border-border-strong',
+        )}
+        aria-hidden="true"
+      >
+        {isActive && (
+          <motion.span
+            layoutId="transcript-active-ring"
+            className="absolute -inset-1.5 rounded-full border border-accent/50"
+            transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+          />
+        )}
+      </span>
+
+      <span className="mt-0.5 shrink-0 font-[family-name:var(--font-mono)] text-[11px] tabular-nums text-fg-muted">
         {formatTime(segment.start)}
       </span>
       <div className="min-w-0 flex-1">
         <p
           className={clsx(
-            'line-clamp-3 break-words text-[15px] leading-snug',
-            isActive ? 'text-fg' : 'text-fg-secondary',
+            'line-clamp-3 break-words font-[family-name:var(--font-display)] text-[15.5px] leading-snug',
+            isActive ? 'text-fg' : 'text-fg-secondary group-hover:text-fg',
           )}
         >
           {segment.translated}
         </p>
-        <p className="mt-0.5 line-clamp-2 break-words text-xs leading-snug text-fg-muted">{segment.original}</p>
+        <p className="mt-0.5 line-clamp-2 break-words text-[12.5px] leading-snug text-fg-muted">{segment.original}</p>
       </div>
     </button>
   );

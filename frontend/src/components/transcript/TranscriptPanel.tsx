@@ -37,22 +37,34 @@ export function TranscriptPanel({ segments }: TranscriptPanelProps) {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-3">
-        <ScrollText size={14} strokeWidth={1.75} className="text-fg-muted" />
-        <h2 className="text-xs font-medium uppercase tracking-wide text-fg-muted">Transcript</h2>
+      <div className="hidden shrink-0 items-center justify-between border-b border-border px-4 py-3 lg:flex">
+        <div className="flex items-center gap-2">
+          <ScrollText size={14} strokeWidth={1.75} className="text-fg-muted" />
+          <h2 className="text-xs font-medium uppercase tracking-wide text-fg-muted">Transcript</h2>
+        </div>
+        {segments.length > 0 && (
+          <span className="font-[family-name:var(--font-mono)] text-[11px] text-fg-muted">{segments.length} lines</span>
+        )}
       </div>
       <div onWheel={handleWheel} className="min-h-0 flex-1 overflow-y-auto p-2">
-        {segments.map((segment, i) => (
-          <TranscriptEntry
-            key={segment.id}
-            ref={(el) => {
-              entryRefs.current[i] = el;
-            }}
-            segment={segment}
-            isActive={i === activeIndex}
-            onClick={() => seekTo(segment.start)}
-          />
-        ))}
+        {segments.length === 0 ? (
+          <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
+            <ScrollText size={20} strokeWidth={1.5} className="text-fg-muted" />
+            <p className="text-sm text-fg-muted">The transcript will appear here once a video is processed.</p>
+          </div>
+        ) : (
+          segments.map((segment, i) => (
+            <TranscriptEntry
+              key={segment.id}
+              ref={(el) => {
+                entryRefs.current[i] = el;
+              }}
+              segment={segment}
+              isActive={i === activeIndex}
+              onClick={() => seekTo(segment.start)}
+            />
+          ))
+        )}
       </div>
     </div>
   );

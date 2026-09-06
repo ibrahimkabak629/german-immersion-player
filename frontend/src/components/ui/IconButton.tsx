@@ -11,7 +11,7 @@ export function IconButton({ label, className, children, ...props }: IconButtonP
       aria-label={label}
       title={label}
       className={clsx(
-        'inline-flex h-9 w-9 items-center justify-center rounded-[var(--radius-sm)] text-fg-secondary transition-colors duration-150 hover:text-fg hover:bg-bg-elevated-2 disabled:opacity-40 disabled:cursor-not-allowed',
+        'inline-flex h-9 w-9 items-center justify-center rounded-[var(--radius-sm)] text-fg-secondary transition-[color,background-color,transform] duration-150 hover:bg-bg-elevated-2 hover:text-fg disabled:cursor-not-allowed disabled:opacity-40',
         className,
       )}
       {...props}

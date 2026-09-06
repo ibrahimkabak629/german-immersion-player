@@ -105,7 +105,19 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
   }
 
   return (
-    <div ref={containerRef} className="relative h-full overflow-hidden rounded-[var(--radius-xl)] border border-border bg-black">
+    <div className="relative h-full">
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute -inset-4 -z-10 opacity-40 blur-2xl"
+        style={{
+          background:
+            'radial-gradient(closest-side, var(--accent-soft), transparent), radial-gradient(closest-side at 80% 90%, var(--de-red-soft), transparent)',
+        }}
+      />
+      <div
+        ref={containerRef}
+        className="gradient-border relative h-full overflow-hidden rounded-[var(--radius-xl)] bg-black shadow-[var(--shadow-card)]"
+      >
       <video
         ref={videoRef}
         src={resolvedSrc}
@@ -151,6 +163,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
         onToggleMute={handleToggleMute}
         onFullscreen={handleFullscreen}
       />
+      </div>
     </div>
   );
 });

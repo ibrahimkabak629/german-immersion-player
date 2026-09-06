@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react';
-import { FileVideo, Link2, Upload } from 'lucide-react';
+import { Link2, Upload } from 'lucide-react';
 import clsx from 'clsx';
 import type { VideoSource } from '../../types/segment';
 import { Button } from '../ui/Button';
+import { Logo } from '../ui/Logo';
 
 const DIRECT_VIDEO_EXTENSIONS = /\.(mp4|webm|mov|m4v|ogg|ogv)(\?.*)?$/i;
 const PAGE_LINK_HOSTS = /(youtube\.com|youtu\.be|vimeo\.com(?!.*\.mp4)|tiktok\.com|twitch\.tv)/i;
@@ -16,6 +17,7 @@ export function VideoSourceBar({ onSourceChange, compact = false }: VideoSourceB
   const [tab, setTab] = useState<'upload' | 'url'>('upload');
   const [urlDraft, setUrlDraft] = useState('');
   const [urlWarning, setUrlWarning] = useState<string | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   function handleFileChosen(file: File | undefined) {
@@ -40,18 +42,44 @@ export function VideoSourceBar({ onSourceChange, compact = false }: VideoSourceB
 
   return (
     <div
+      onDragOver={(e) => {
+        if (tab !== 'upload') return;
+        e.preventDefault();
+        setIsDragOver(true);
+      }}
+      onDragLeave={() => setIsDragOver(false)}
+      onDrop={(e) => {
+        if (tab !== 'upload') return;
+        e.preventDefault();
+        setIsDragOver(false);
+        handleFileChosen(e.dataTransfer.files?.[0]);
+      }}
       className={clsx(
-        'flex flex-col items-center justify-center gap-4 rounded-[var(--radius-xl)] border border-border bg-bg-elevated',
-        compact ? 'p-5' : 'h-full p-10',
+        'relative flex flex-col items-center justify-center gap-4 overflow-hidden rounded-[var(--radius-xl)] border bg-bg-elevated transition-colors',
+        isDragOver ? 'border-accent bg-accent-soft' : 'border-border',
+        compact ? 'p-5' : 'h-full p-8 sm:p-10',
       )}
     >
       {!compact && (
-        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-accent-soft text-accent">
-          <FileVideo size={26} strokeWidth={1.5} />
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 bg-canvas-grid opacity-60"
+        />
+      )}
+
+      {!compact && (
+        <div className="relative flex flex-col items-center gap-3">
+          <div className="rounded-2xl bg-bg-elevated-2 p-3 shadow-[var(--shadow-card)]">
+            <Logo size={40} />
+          </div>
+          <div className="text-center">
+            <h2 className="font-[family-name:var(--font-display)] text-xl text-fg">Drop a video to begin</h2>
+            <p className="mt-1 text-sm text-fg-muted">We'll transcribe, translate, and dub it — automatically.</p>
+          </div>
         </div>
       )}
 
-      <div className="flex rounded-[var(--radius-sm)] border border-border bg-bg-elevated-2 p-0.5 text-sm">
+      <div className="relative flex rounded-[var(--radius-sm)] border border-border bg-bg-elevated-2 p-0.5 text-sm">
         <button
           type="button"
           onClick={() => setTab('upload')}
@@ -75,7 +103,7 @@ export function VideoSourceBar({ onSourceChange, compact = false }: VideoSourceB
       </div>
 
       {tab === 'upload' ? (
-        <div className="flex flex-col items-center gap-2">
+        <div className="relative flex flex-col items-center gap-2">
           <input
             ref={fileInputRef}
             type="file"
@@ -87,10 +115,10 @@ export function VideoSourceBar({ onSourceChange, compact = false }: VideoSourceB
             <Upload size={15} strokeWidth={1.75} />
             Choose a video file
           </Button>
-          {!compact && <p className="text-xs text-fg-muted">MP4, WebM, MOV, and other browser-playable formats</p>}
+          {!compact && <p className="text-xs text-fg-muted">or drag and drop &middot; MP4, WebM, MOV, and more</p>}
         </div>
       ) : (
-        <div className="flex w-full max-w-sm flex-col items-center gap-2">
+        <div className="relative flex w-full max-w-sm flex-col items-center gap-2">
           <div className="flex w-full items-center gap-2">
             <div className="flex flex-1 items-center gap-2 rounded-[var(--radius-sm)] border border-border bg-bg-elevated-2 px-3 py-2">
               <Link2 size={14} strokeWidth={1.75} className="text-fg-muted" />
