@@ -1,3 +1,4 @@
+import json
 import os
 import shutil
 import tempfile
@@ -188,10 +189,17 @@ async def process_video(
 
         await progress_manager.broadcast("done", "complete")
 
+        # segments.json carries what SRT can't: per-word timings for word-level
+        # subtitle highlighting. The SRT stays in the zip for download/portability.
+        segments_path = os.path.join(temp_dir, "segments.json")
+        with open(segments_path, "w", encoding="utf-8") as f:
+            json.dump(translated_segments, f, ensure_ascii=False)
+
         zip_path = os.path.join(temp_dir, "dubbed_output.zip")
         with zipfile.ZipFile(zip_path, "w") as zf:
             zf.write(dubbed_video_path, "dubbed_video.mp4")
             zf.write(srt_path, "subtitles_dual.srt")
+            zf.write(segments_path, "segments.json")
 
         return FileResponse(
             zip_path,

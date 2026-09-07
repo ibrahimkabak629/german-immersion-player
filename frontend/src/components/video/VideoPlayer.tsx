@@ -7,6 +7,7 @@ import { usePlayback } from '../../context/PlaybackContext';
 import type { VideoPlayerHandle } from '../../context/PlaybackContext';
 import { useActiveSegment } from '../../hooks/useActiveSegment';
 import { useObjectUrl } from '../../hooks/useObjectUrl';
+import { useWordHighlight } from '../../hooks/useWordHighlight';
 import { stepSpeed } from '../../lib/playbackSpeed';
 import { ModeSelector } from './ModeSelector';
 import { SpeakingPracticeCard } from './SpeakingPracticeCard';
@@ -56,6 +57,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
   // Subtitle offset shifts DISPLAY timing only: audio/video keep real time,
   // but the "active" segment is looked up at (time - offset).
   const { segment: activeSegment } = useActiveSegment(segments, currentTime - subtitleOffset);
+  const wordHighlight = useWordHighlight(videoRef, activeSegment, subtitleOffset);
 
   const objectUrl = useObjectUrl(source?.kind === 'file' ? source.file : null);
   const resolvedSrc = source?.kind === 'file' ? objectUrl : source?.kind === 'url' ? source.url : null;
@@ -274,6 +276,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
           <SubtitleOverlay
             segment={activeSegment}
             mode={mode}
+            highlight={wordHighlight}
             onWordClick={onWordClick && activeSegment ? (word) => onWordClick(word, activeSegment) : undefined}
           />
         )}

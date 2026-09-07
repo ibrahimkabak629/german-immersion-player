@@ -174,12 +174,18 @@ def translate_segments(segments: list, level: str = "B1", video_source: str | No
             if not translated_text:
                 return None
 
-            translated_segments.append({
+            translated_segment = {
                 "start": segment["start"],
                 "end": segment["end"],
                 "original": segment["text"],
                 "translated": translated_text
-            })
+            }
+            # Word timings belong to the English source audio, so they drive
+            # highlighting of the original line (the German is a rewrite and
+            # has no per-word timing of its own).
+            if segment.get("words"):
+                translated_segment["words"] = segment["words"]
+            translated_segments.append(translated_segment)
 
         print("All segments translated!")
         return translated_segments

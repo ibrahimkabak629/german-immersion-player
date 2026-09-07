@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import type { GermanLevel, Segment, VideoSource } from '../types/segment';
 import { ApiError, connectProgressSocket, processVideo } from '../lib/api';
-import { parseDualSrt } from '../lib/srtParser';
+import { parseDualSrt, parseSegmentsJson } from '../lib/srtParser';
 
 export type ProcessingStep = 'extracting_audio' | 'transcribing' | 'translating' | 'dubbing' | 'syncing_subtitles' | 'done';
 
@@ -48,10 +48,11 @@ export function useVideoProcessing() {
     socketRef.current = socket;
 
     try {
-      const { videoBlob, srtText } = await processVideo(source, level);
+      const { videoBlob, srtText, segmentsJson } = await processVideo(source, level);
       const videoFile = new File([videoBlob], 'dubbed_video.mp4', { type: 'video/mp4' });
       const srtBlob = new Blob([srtText], { type: 'application/x-subrip' });
-      const segments = parseDualSrt(srtText);
+      // Prefer segments.json (has word timings); fall back to the SRT.
+      const segments = parseSegmentsJson(segmentsJson) ?? parseDualSrt(srtText);
       setState({ status: 'ready', videoFile, srtBlob, segments, title: titleFromSource(source), level });
     } catch (error) {
       const message = error instanceof ApiError ? error.message : 'Something went wrong while processing this video.';

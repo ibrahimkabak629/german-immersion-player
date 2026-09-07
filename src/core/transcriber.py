@@ -60,14 +60,64 @@ def _segment_confidence(segment: dict) -> float:
     return math.exp(segment.get("avg_logprob", 0.0))
 
 
-def _build_segments(raw_segments) -> list:
+def _normalize_words(raw_words) -> list | None:
+    """
+    Whisper's word timings come back as {word, start, end}. Returns a cleaned
+    list, or None when the model didn't provide any - callers fall back to
+    segment-level timing in that case.
+    """
+    if not raw_words:
+        return None
+
+    words = []
+    for word in raw_words:
+        if isinstance(word, dict):
+            text, start, end = word.get("word"), word.get("start"), word.get("end")
+        else:
+            text, start, end = getattr(word, "word", None), getattr(word, "start", None), getattr(word, "end", None)
+
+        if text is None or start is None or end is None:
+            continue
+        words.append({"word": str(text).strip(), "start": float(start), "end": float(end)})
+
+    return words or None
+
+
+def _attach_words_to_segments(segments: list, all_words: list | None) -> None:
+    """
+    Groq returns word timings for the whole audio rather than per segment, so
+    each word is assigned to the segment whose time range contains its start.
+    """
+    if not all_words:
+        return
+
+    for segment in segments:
+        start, end = segment.get("start"), segment.get("end")
+        if start is None or end is None:
+            continue
+        segment["words"] = [w for w in all_words if start <= w["start"] < end]
+
+
+def _build_segments(raw_segments, all_words: list | None = None) -> list:
     segments = []
     for segment in raw_segments:
-        confidence = _segment_confidence(segment)
+        data = segment if isinstance(segment, dict) else dict(segment)
+        confidence = _segment_confidence(data)
         uncertain = confidence < CONFIDENCE_THRESHOLD
         if uncertain:
-            print(f"Low-confidence segment ({confidence:.2f}): {segment['text'].strip()!r}")
-        segments.append({**segment, "confidence": confidence, "uncertain": uncertain})
+            print(f"Low-confidence segment ({confidence:.2f}): {data['text'].strip()!r}")
+
+        words = _normalize_words(data.get("words"))
+        entry = {**data, "confidence": confidence, "uncertain": uncertain}
+        if words:
+            entry["words"] = words
+        segments.append(entry)
+
+    # Groq puts word timings at the top level; map them onto segments if the
+    # segments themselves didn't already carry their own.
+    if all_words and not any(s.get("words") for s in segments):
+        _attach_words_to_segments(segments, _normalize_words(all_words))
+
     return segments
 
 
@@ -81,7 +131,9 @@ def _transcribe_via_groq(audio_path: str, language: str | None, max_retries: int
                     "model": GROQ_TRANSCRIPTION_MODEL,
                     "file": (os.path.basename(audio_path), f.read()),
                     "response_format": "verbose_json",
-                    "timestamp_granularities": ["segment"],
+                    # Word timings drive per-word subtitle highlighting; segment
+                    # granularity stays requested so segments are always present.
+                    "timestamp_granularities": ["segment", "word"],
                 }
                 if language:
                     kwargs["language"] = language
@@ -89,10 +141,17 @@ def _transcribe_via_groq(audio_path: str, language: str | None, max_retries: int
                 result = _get_groq_client().audio.transcriptions.create(**kwargs)
 
             print("Transcription complete!")
+            all_words = getattr(result, "words", None)
+            segments = _build_segments(result.segments, all_words)
+            if any(s.get("words") for s in segments):
+                print("Word-level timestamps available")
+            else:
+                print("No word-level timestamps returned - subtitles will use segment timing")
+
             return {
                 "text": result.text,
                 "language": result.language,
-                "segments": _build_segments(result.segments),
+                "segments": segments,
             }
 
         except (groq.InternalServerError, groq.APIConnectionError, groq.RateLimitError) as e:
@@ -116,7 +175,7 @@ def _transcribe_via_local_whisper(audio_path: str, language: str | None) -> dict
     try:
         model = _get_local_whisper_model()
         print("Transcribing audio locally...")
-        result = model.transcribe(audio_path, language=language)
+        result = model.transcribe(audio_path, language=language, word_timestamps=True)
 
         print("Local transcription complete!")
         return {

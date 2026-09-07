@@ -1,14 +1,17 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { AnimatePresence, motion, type Variants } from 'framer-motion';
 import { Ear, Eye } from 'lucide-react';
+import clsx from 'clsx';
 import type { Segment } from '../../types/segment';
 import type { LearningMode } from '../../types/learningMode';
 import { cleanWord } from '../../lib/germanWords';
 import { useSettings } from '../../context/SettingsContext';
+import type { WordHighlight } from '../../hooks/useWordHighlight';
 
 interface SubtitleOverlayProps {
   segment: Segment | null;
   mode: LearningMode;
+  highlight?: WordHighlight;
   onWordClick?: (word: string) => void;
 }
 
@@ -22,7 +25,21 @@ const word: Variants = {
   show: { opacity: 1, y: 0, transition: { duration: 0.22, ease: [0.16, 1, 0.3, 1] } },
 };
 
-function SubtitleCard({ segment, clickable, onWordClick }: { segment: Segment; clickable: boolean; onWordClick?: (word: string) => void }) {
+function SubtitleCard({
+  segment,
+  clickable,
+  highlight,
+  onWordClick,
+}: {
+  segment: Segment;
+  clickable: boolean;
+  highlight?: WordHighlight;
+  onWordClick?: (word: string) => void;
+}) {
+  const germanHighlight = highlight?.available ? highlight.translatedIndex : -1;
+  const englishHighlight = highlight?.available ? highlight.originalIndex : -1;
+  const englishWords = segment.original.split(' ');
+
   return (
     <motion.div
       key={segment.id}
@@ -50,20 +67,34 @@ function SubtitleCard({ segment, clickable, onWordClick }: { segment: Segment; c
                   }
                 : undefined
             }
-            className={clickable ? 'cursor-pointer rounded-sm transition-colors hover:bg-white/15' : undefined}
+            className={clsx(
+              'rounded-sm transition-colors duration-150',
+              clickable && 'cursor-pointer hover:bg-white/15',
+              i === germanHighlight && 'bg-accent/25 text-accent',
+            )}
           >
             {w}
           </motion.span>
         ))}
       </motion.p>
       <p className="mt-1 line-clamp-1 text-[11px] leading-snug text-white/60 sm:mt-1.5 sm:line-clamp-none sm:text-[15px]">
-        {segment.original}
+        {englishHighlight >= 0
+          ? englishWords.map((w, i) => (
+              <span
+                key={i}
+                className={clsx('rounded-sm transition-colors duration-150', i === englishHighlight && 'bg-white/20 text-white')}
+              >
+                {w}
+                {i < englishWords.length - 1 ? ' ' : ''}
+              </span>
+            ))
+          : segment.original}
       </p>
     </motion.div>
   );
 }
 
-export function SubtitleOverlay({ segment, mode, onWordClick }: SubtitleOverlayProps) {
+export function SubtitleOverlay({ segment, mode, highlight, onWordClick }: SubtitleOverlayProps) {
   const { settings } = useSettings();
   const clickable = settings.grammarExplainer && !!onWordClick;
 
@@ -114,10 +145,11 @@ export function SubtitleOverlay({ segment, mode, onWordClick }: SubtitleOverlayP
         </motion.button>
       );
     } else if (lastSegment && revealed) {
+      // Revealed after the line already played, so no live highlight.
       content = <SubtitleCard segment={lastSegment} clickable={clickable} onWordClick={onWordClick} />;
     }
   } else if (segment) {
-    content = <SubtitleCard segment={segment} clickable={clickable} onWordClick={onWordClick} />;
+    content = <SubtitleCard segment={segment} clickable={clickable} highlight={highlight} onWordClick={onWordClick} />;
   }
 
   return <AnimatePresence mode="wait">{content}</AnimatePresence>;

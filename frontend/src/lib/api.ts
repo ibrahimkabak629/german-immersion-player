@@ -27,6 +27,8 @@ async function readErrorDetail(response: Response): Promise<string | null> {
 export interface ProcessVideoResult {
   videoBlob: Blob;
   srtText: string;
+  /** Raw segments.json from the backend, when present — carries word timings. */
+  segmentsJson: string | null;
 }
 
 /** Posts a video (file or url) + CEFR level to the backend and unzips the dubbed video + dual SRT it returns. */
@@ -55,8 +57,14 @@ export async function processVideo(source: NonNullable<VideoSource>, level: Germ
     throw new ApiError('Server response was missing the expected video or subtitle file');
   }
 
-  const [videoBuffer, srtText] = await Promise.all([videoEntry.async('arraybuffer'), srtEntry.async('text')]);
-  return { videoBlob: new Blob([videoBuffer], { type: 'video/mp4' }), srtText };
+  // Older backends won't include segments.json — the caller falls back to SRT.
+  const segmentsEntry = zip.file('segments.json');
+  const [videoBuffer, srtText, segmentsJson] = await Promise.all([
+    videoEntry.async('arraybuffer'),
+    srtEntry.async('text'),
+    segmentsEntry ? segmentsEntry.async('text') : Promise.resolve(null),
+  ]);
+  return { videoBlob: new Blob([videoBuffer], { type: 'video/mp4' }), srtText, segmentsJson };
 }
 
 /** Asks the AI tutor a plain-English question about a German subtitle line. */
