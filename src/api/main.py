@@ -8,13 +8,14 @@ import zipfile
 from urllib.parse import urlparse
 
 import requests
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from starlette.background import BackgroundTask
 
+from src.api.jobs import Job, JobStatus, job_manager
 from src.core import diarizer, dubber, subtitle_sync, transcriber, translator
 
 app = FastAPI(title="German Immersion Player API")
@@ -29,49 +30,9 @@ app.add_middleware(
 VALID_LEVELS = set(translator.LEVEL_DESCRIPTIONS.keys())
 
 
-class ProgressManager:
-    """Broadcasts pipeline progress to every connected /progress client.
-
-    Scoped for this app's actual usage (one person dubbing one video at a
-    time) - a single shared channel, no per-job routing.
-    """
-
-    def __init__(self):
-        self.connections: set[WebSocket] = set()
-
-    async def connect(self, websocket: WebSocket) -> None:
-        await websocket.accept()
-        self.connections.add(websocket)
-
-    def disconnect(self, websocket: WebSocket) -> None:
-        self.connections.discard(websocket)
-
-    async def broadcast(self, step: str, status: str) -> None:
-        dead = set()
-        for websocket in self.connections:
-            try:
-                await websocket.send_json({"step": step, "status": status})
-            except Exception:
-                dead.add(websocket)
-        self.connections -= dead
-
-
-progress_manager = ProgressManager()
-
-
 @app.get("/health")
 async def health():
     return {"status": "ok"}
-
-
-@app.websocket("/progress")
-async def progress_socket(websocket: WebSocket):
-    await progress_manager.connect(websocket)
-    try:
-        while True:
-            await websocket.receive_text()
-    except WebSocketDisconnect:
-        progress_manager.disconnect(websocket)
 
 
 class AskTutorRequest(BaseModel):
@@ -178,6 +139,92 @@ def _download_video(url: str, destination: str) -> None:
             f.write(chunk)
 
 
+def _run_pipeline(job: Job, video_path: str, video_source: str, level: str, preserve_background: bool, temp_dir: str) -> None:
+    """
+    The actual dubbing pipeline, run synchronously on a JobManager worker
+    thread (not the event loop) - so plain blocking calls throughout, no
+    run_in_threadpool/await needed. Raises on failure; JobManager catches it,
+    marks the job errored, and cleans up temp_dir. Progress is reported by
+    updating job.step rather than a broadcast, since each job now runs
+    independently of any others in flight.
+    """
+    job_manager.update_step(job.id, "extracting_audio")
+    audio_path = transcriber.extract_audio(video_path, os.path.join(temp_dir, "audio.wav"))
+    if not audio_path:
+        raise RuntimeError("Audio extraction failed")
+
+    # Vocals/background separation happens before transcription so only the
+    # spoken voice gets transcribed and translated; the background track is
+    # carried through untouched and remixed under the dubbed voice later.
+    # Disabled, or on any failure (Demucs missing, model download failed,
+    # separation error), this just falls back to the original single-track
+    # pipeline - transcribing the full mixed audio, no background to mix back.
+    transcription_audio_path = audio_path
+    background_audio_path = None
+    if preserve_background:
+        separation = dubber.separate_vocals_and_background(video_path, temp_dir)
+        if separation:
+            transcription_audio_path, background_audio_path = separation
+
+    job_manager.update_step(job.id, "transcribing")
+    transcription = transcriber.transcribe_audio(transcription_audio_path)
+    if not transcription:
+        raise RuntimeError("Transcription failed")
+
+    # Speaker diarization runs on the same audio that was just transcribed
+    # (the isolated vocals track when background separation succeeded,
+    # otherwise the full extracted audio). On any failure (pyannote missing,
+    # no/invalid HF token, gated models not accepted) this just falls back
+    # to the existing single-voice dubbing below.
+    job_manager.update_step(job.id, "diarizing")
+    diarization_turns = diarizer.diarize_audio(transcription_audio_path)
+    segments_with_speakers = transcription["segments"]
+    confirmed_speaker_labels = None
+    if diarization_turns:
+        segments_with_speakers = diarizer.assign_speakers_to_segments(transcription["segments"], diarization_turns)
+        confirmed_speaker_labels = diarizer.confirmed_speakers(diarization_turns)
+
+    job_manager.update_step(job.id, "translating")
+    translated_segments = translator.translate_segments(segments_with_speakers, level, video_source)
+    if not translated_segments:
+        raise RuntimeError("Translation failed")
+
+    job_manager.update_step(job.id, "dubbing")
+    dubbed_video_path = os.path.join(temp_dir, "dubbed_video.mp4")
+    dub_result = dubber.dub_video(
+        video_path,
+        translated_segments,
+        dubbed_video_path,
+        background_audio_path=background_audio_path,
+        speaker_turns=diarization_turns,
+        confirmed_speaker_labels=confirmed_speaker_labels,
+        vocals_audio_path=transcription_audio_path,
+    )
+    if not dub_result:
+        raise RuntimeError("Dubbing failed")
+
+    job_manager.update_step(job.id, "syncing_subtitles")
+    srt_path = os.path.join(temp_dir, "subtitles_dual.srt")
+    srt_result = subtitle_sync.generate_dual_srt(translated_segments, srt_path)
+    if not srt_result:
+        raise RuntimeError("Subtitle generation failed")
+
+    # segments.json carries what SRT can't: per-word timings for word-level
+    # subtitle highlighting. The SRT stays in the zip for download/portability.
+    segments_path = os.path.join(temp_dir, "segments.json")
+    with open(segments_path, "w", encoding="utf-8") as f:
+        json.dump(translated_segments, f, ensure_ascii=False)
+
+    zip_path = os.path.join(temp_dir, "dubbed_output.zip")
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.write(dubbed_video_path, "dubbed_video.mp4")
+        zf.write(srt_path, "subtitles_dual.srt")
+        zf.write(segments_path, "segments.json")
+
+    job.result_path = zip_path
+    job_manager.update_step(job.id, "done")
+
+
 @app.post("/process-video")
 async def process_video(
     file: UploadFile | None = File(None),
@@ -185,6 +232,14 @@ async def process_video(
     level: str = Form("B1"),
     preserve_background: bool = Form(True),
 ):
+    """
+    Persists the input video, then hands the rest of the pipeline to the job
+    queue and returns immediately with a job_id - the caller polls
+    GET /jobs/{job_id} for status/queue position and downloads the result
+    from GET /jobs/{job_id}/download once done. This lets multiple people
+    submit videos without one request blocking another or the server
+    processing more jobs at once than the GPU can safely handle.
+    """
     if not file and not url:
         raise HTTPException(status_code=400, detail="Provide either a file upload or a url")
     if file and url:
@@ -201,99 +256,63 @@ async def process_video(
         else:
             await run_in_threadpool(_download_video, url, video_path)
             video_source = url
-
-        await progress_manager.broadcast("extracting_audio", "in_progress")
-        audio_path = await run_in_threadpool(
-            transcriber.extract_audio, video_path, os.path.join(temp_dir, "audio.wav")
-        )
-        if not audio_path:
-            raise HTTPException(status_code=500, detail="Audio extraction failed")
-
-        # Vocals/background separation happens before transcription so only the
-        # spoken voice gets transcribed and translated; the background track is
-        # carried through untouched and remixed under the dubbed voice later.
-        # Disabled, or on any failure (Demucs missing, model download failed,
-        # separation error), this just falls back to the original single-track
-        # pipeline - transcribing the full mixed audio, no background to mix back.
-        transcription_audio_path = audio_path
-        background_audio_path = None
-        if preserve_background:
-            separation = await run_in_threadpool(
-                dubber.separate_vocals_and_background, video_path, temp_dir
-            )
-            if separation:
-                transcription_audio_path, background_audio_path = separation
-
-        await progress_manager.broadcast("transcribing", "in_progress")
-        transcription = await run_in_threadpool(transcriber.transcribe_audio, transcription_audio_path)
-        if not transcription:
-            raise HTTPException(status_code=500, detail="Transcription failed")
-
-        # Speaker diarization runs on the same audio that was just
-        # transcribed (the isolated vocals track when background separation
-        # succeeded, otherwise the full extracted audio). On any failure
-        # (pyannote missing, no/invalid HF token, gated models not accepted)
-        # this just falls back to the existing single-voice dubbing below.
-        await progress_manager.broadcast("diarizing", "in_progress")
-        diarization_turns = await run_in_threadpool(diarizer.diarize_audio, transcription_audio_path)
-        segments_with_speakers = transcription["segments"]
-        confirmed_speaker_labels = None
-        if diarization_turns:
-            segments_with_speakers = diarizer.assign_speakers_to_segments(transcription["segments"], diarization_turns)
-            confirmed_speaker_labels = diarizer.confirmed_speakers(diarization_turns)
-
-        await progress_manager.broadcast("translating", "in_progress")
-        translated_segments = await run_in_threadpool(
-            translator.translate_segments, segments_with_speakers, level, video_source
-        )
-        if not translated_segments:
-            raise HTTPException(status_code=500, detail="Translation failed")
-
-        await progress_manager.broadcast("dubbing", "in_progress")
-        dubbed_video_path = os.path.join(temp_dir, "dubbed_video.mp4")
-        dub_result = await run_in_threadpool(
-            dubber.dub_video,
-            video_path,
-            translated_segments,
-            dubbed_video_path,
-            background_audio_path=background_audio_path,
-            speaker_turns=diarization_turns,
-            confirmed_speaker_labels=confirmed_speaker_labels,
-            vocals_audio_path=transcription_audio_path,
-        )
-        if not dub_result:
-            raise HTTPException(status_code=500, detail="Dubbing failed")
-
-        await progress_manager.broadcast("syncing_subtitles", "in_progress")
-        srt_path = os.path.join(temp_dir, "subtitles_dual.srt")
-        srt_result = await run_in_threadpool(subtitle_sync.generate_dual_srt, translated_segments, srt_path)
-        if not srt_result:
-            raise HTTPException(status_code=500, detail="Subtitle generation failed")
-
-        await progress_manager.broadcast("done", "complete")
-
-        # segments.json carries what SRT can't: per-word timings for word-level
-        # subtitle highlighting. The SRT stays in the zip for download/portability.
-        segments_path = os.path.join(temp_dir, "segments.json")
-        with open(segments_path, "w", encoding="utf-8") as f:
-            json.dump(translated_segments, f, ensure_ascii=False)
-
-        zip_path = os.path.join(temp_dir, "dubbed_output.zip")
-        with zipfile.ZipFile(zip_path, "w") as zf:
-            zf.write(dubbed_video_path, "dubbed_video.mp4")
-            zf.write(srt_path, "subtitles_dual.srt")
-            zf.write(segments_path, "segments.json")
-
-        return FileResponse(
-            zip_path,
-            media_type="application/zip",
-            filename="dubbed_output.zip",
-            background=BackgroundTask(shutil.rmtree, temp_dir, ignore_errors=True),
-        )
-
     except HTTPException:
         shutil.rmtree(temp_dir, ignore_errors=True)
         raise
     except Exception as e:
         shutil.rmtree(temp_dir, ignore_errors=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+    def run(job: Job) -> None:
+        job.temp_dir = temp_dir
+        _run_pipeline(job, video_path, video_source, level, preserve_background, temp_dir)
+
+    job = job_manager.submit(run)
+    return {"job_id": job.id}
+
+
+class JobStatusResponse(BaseModel):
+    job_id: str
+    status: str
+    step: str | None = None
+    queue_position: int | None = None
+    error: str | None = None
+
+
+@app.get("/jobs/{job_id}", response_model=JobStatusResponse)
+async def get_job_status(job_id: str):
+    job = job_manager.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return JobStatusResponse(
+        job_id=job.id,
+        status=job.status,
+        step=job.step,
+        queue_position=job_manager.queue_position(job.id),
+        error=job.error,
+    )
+
+
+def _cleanup_job(job_id: str) -> None:
+    job = job_manager.get(job_id)
+    if job and job.temp_dir:
+        shutil.rmtree(job.temp_dir, ignore_errors=True)
+    job_manager.forget(job_id)
+
+
+@app.get("/jobs/{job_id}/download")
+async def download_job_result(job_id: str):
+    job = job_manager.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.status == JobStatus.ERROR:
+        raise HTTPException(status_code=500, detail=job.error or "Processing failed")
+    if job.status != JobStatus.DONE or not job.result_path:
+        raise HTTPException(status_code=409, detail="Job is not finished yet")
+
+    return FileResponse(
+        job.result_path,
+        media_type="application/zip",
+        filename="dubbed_output.zip",
+        background=BackgroundTask(_cleanup_job, job_id),
+    )

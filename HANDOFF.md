@@ -1,75 +1,98 @@
 ## PROJECT: German Immersion Player
-## Date: Day 3 Session
+## Date: Day 4 Session
 
 ### WHAT WAS BUILT TODAY
 
-**UI redesign (premium pass)**
-- Full visual overhaul: new brand mark/favicon, refined oklch tokens, gradient-border accents
-- Sliding-pill CEFR level selector, Linear-style icon rail, real chat UI for the AI tutor
-- Fully mobile responsive (tab-switched transcript/tutor below 1024px)
+**Speaker diarization**
+- pyannote.audio (`speaker-diarization-3.1` + `segmentation-3.0`, both gated - needs
+  `HUGGINGFACE_TOKEN` in `.env` with access accepted) runs on the Demucs-isolated vocals
+  track, so background music doesn't confuse speaker embeddings
+- Each transcribed segment gets labeled with its diarized speaker (nearest-turn fallback
+  when Whisper's and pyannote's independently-computed timings don't overlap at a boundary)
+- A speaker is only "confirmed" (worth cloning a voice for) once it accumulates >= 2s of
+  total speaking time - filters out one-off diarization blips (meme sound effects,
+  background voices) that would otherwise get their own bogus voice clone
+- 2+ confirmed speakers: one Fish Audio voice cloned per speaker (from their longest
+  turns), each segment dubbed in its own speaker's voice. A segment matched to an
+  unconfirmed speaker is left as an untouched original-audio passthrough instead of
+  being dubbed
+- 0-1 confirmed speakers: identical to the pre-diarization single-voice-clone behavior -
+  zero risk to existing videos
+- Worked around two pyannote.audio 4.x quirks found during integration: it eager-loads a
+  PLDA model from a second, unrelated gated repo even when the checkpoint's own
+  AgglomerativeClustering never uses it (worked around with a narrow monkeypatch that
+  falls back to None on 403); and it reads files via torchcodec, whose native DLLs
+  wouldn't load on this machine (worked around by loading the waveform with `soundfile`
+  and passing pyannote's documented `{"waveform", "sample_rate"}` dict instead)
 
-**Player features**
-- Per-line instant replay: replay icon on every transcript line + R shortcut for the current line
-- Playback speed control: 0.5x-1.5x dropdown, </> shortcuts, persisted, affects video+dubbed audio together
-- Subtitle delay control: +/-0.25s steps, -3s..+3s range, reset, saved per video (display timing only)
-- Learning modes: Listening / Reading (default) / Speaking, M cycles, persisted
-  - Listening: subtitles hidden behind a hint, "Show subtitle" reveal after the line ends
-  - Speaking: auto-pauses after each line, mic record + playback of your attempt, Resume
-- Word-level subtitle highlighting (see below)
+**Security audit and fixes**
+- Found and fixed a HIGH-severity SSRF in `/process-video`'s `url` field: it was fetched
+  server-side with zero validation (full attacker control of scheme/host/port), which
+  could reach cloud metadata endpoints or internal-only services. Now restricted to
+  http(s), resolves the hostname, rejects any address that isn't publicly routable, and
+  rejects redirects outright. Regression-tested.
+- An old `.env` (real API key values) that had been committed to git history in an early
+  commit was scrubbed from all 4 branches with `git filter-repo` and force-pushed; all
+  affected keys (DeepL, Fish Audio, Groq, HuggingFace) have been rotated and verified
+  working end-to-end
+- Removed a stale, already-inactive Anthropic API key reference (the app never actually
+  depended on it - Groq/DeepL fully cover translation)
 
-**Learning features**
-- Settings panel: 8 toggles, all persisted to localStorage
-- Word bank: auto-extracted German words, Groq lookups, star/learned, filters
-- Grammar explainer: tap any German word for meaning/grammar/why/examples via /ask-tutor
-- Daily challenge: 5 mixed questions from watch history, optional streak
-- Post-video popup: practice prompt with flashcards / fill-blank / quiz / grammar
-- Video history: date, level, duration, % watched, words learned, resume, delete
-- Level-up suggestions: after 3 consecutive 80%+ results, a dismissable "try B2?" nudge
-- Exports: word bank as Anki CSV + plain CSV, transcript as side-by-side PDF
-- German keyboard helper: floating ä ö ü ß bar that follows focus into any text input
+**Context-aware translation**
+- `translate_segments` now makes the whole video's transcript available as context
+  instead of translating each segment in isolation, so a name or term translated one way
+  in segment 1 doesn't drift into a different rendering by segment 20 - without resending
+  the full transcript on every one of a video's N segment calls:
+  - `translate_base_batch`: every segment's English text goes to DeepL in a single
+    batched call instead of one call per segment, so DeepL's engine sees the whole
+    document at once
+  - `build_terminology_glossary`: one extra Groq pass over the full transcript up front,
+    surfacing recurring proper nouns/terms/phrases and pinning down a single German
+    rendering for each; that compact glossary (not the whole transcript) is then reused
+    in every segment's refinement (`refine_translation_context`) and level-adaptation
+    (`adapt_to_level`) call
+- Verified directly: a name and a term repeated 6s apart in a test transcript came back
+  identically rendered in both the first and last mention
 
-**Dubbing pipeline fixes**
-- Video quality fix: found and fixed the real bug behind dubbed videos losing quality
-  (e.g. 1080p looking like 480p). `-c:v copy` was already in place, but
-  `mux_audio_with_video` mapped video with the bare `-map 0:v`, which matches every
-  video stream in the input — including embedded thumbnail/cover-art streams some
-  MP4s carry, which some players show instead of the real footage. Fixed with
-  `-map 0:v:0` to pin to the primary video stream only. Validated on a synthetic
-  1080p+thumbnail reproduction case and on real `test_clip.mp4` — output resolution
-  now matches input exactly, with `-c:v copy` confirming no re-encode.
-- Background music preservation: added Demucs (`htdemucs`, GPU-accelerated on the
-  RTX 4070) to separate vocals from background music/ambiance before transcription.
-  Only the vocals get transcribed and translated; the dubbed German voice is mixed
-  back over the ORIGINAL background track (with ducking) instead of replacing all
-  audio. New `preserve_background` toggle on `/process-video` (default enabled),
-  falls back to the original full-audio-replacement behavior automatically if
-  Demucs is missing or separation fails. Also fixed a real `amix` bug found while
-  testing: ffmpeg's `duration=longest` doesn't reliably zero-pad a shorter stream,
-  so the dubbed voice could bleed/hold open under the background for the rest of
-  the video — fixed by explicitly padding the voice track to the background's
-  length before mixing.
-
-### WORD-LEVEL TIMESTAMPS (Feature 7 details)
-- transcriber.py requests `timestamp_granularities: ["segment", "word"]` from Groq;
-  local Whisper fallback uses `word_timestamps=True`
-- Groq returns word timings at the top level, so they're mapped onto segments by time range
-- SRT can't carry word data, so the backend now also writes `segments.json` into the result zip;
-  the frontend prefers it and falls back to parsing the dual SRT when absent
-- Highlighting runs on requestAnimationFrame (timeupdate only fires ~4x/sec and lags visibly),
-  but only re-renders when the word index changes
-- Whisper times the spoken ENGLISH audio, so the English line is exact; the German line is a
-  rewrite with no timings of its own and is highlighted proportionally
-- Segments without timings render plain — graceful segment-level fallback
+**Job queue system**
+- `src/api/jobs.py`: a minimal in-memory FIFO queue (`JobManager`) with a fixed pool of
+  background worker threads - no Celery/Redis, appropriate for this app's scale.
+  `MAX_CONCURRENT_JOBS = 1` by default: Demucs/pyannote/local-Whisper-fallback all share
+  one CUDA device, so concurrent GPU work risks VRAM contention/OOM rather than any real
+  speedup: one worker keeps jobs strictly sequential and safe
+- `POST /process-video` now persists the input and returns `{job_id}` immediately instead
+  of blocking until the whole pipeline finishes; `GET /jobs/{id}` reports
+  status/step/queue_position/error; `GET /jobs/{id}/download` returns the result zip once
+  done (409 if not ready yet) and cleans up the job's temp dir afterward. Finished jobs
+  that are never downloaded are still evicted (and their temp dir removed) after 1 hour
+- The old global `/progress` broadcast websocket was removed entirely - it broadcast to
+  every connected client with no per-job scoping, which would have mixed one job's
+  progress into another's UI under real concurrent load. Polling `GET /jobs/{id}` is
+  inherently per-job-isolated by construction
+- Frontend: `useVideoProcessing` now submits + polls (1.5s interval) instead of a single
+  blocking request + websocket; a new `queued` processing state shows queue position via
+  `ProcessingOverlay`
+- Verified with a genuine concurrent test: submitted two different-length clips
+  back-to-back, confirmed one was immediately `processing` while the other was `queued`
+  at position 1, and confirmed each job's downloaded result matched its OWN input's
+  duration exactly (not the other job's) - the actual "no data mixing" property
 
 ### CURRENT STATE OF EVERY MODULE
 - transcriber.py: Groq Whisper large-v3 + word timestamps, GPU local fallback, confidence flagging
-- translator.py: DeepL base + Groq context refinement + CEFR adaptation; passes word timings through
-- dubber.py: Fish Audio voice cloning, emotion tags, audio normalization, Demucs
-  vocal/background separation with background remix, primary-stream-safe muxing
+- diarizer.py: pyannote.audio speaker diarization, confirmed-speaker duration threshold,
+  nearest-turn segment assignment
+- translator.py: DeepL batched base translation + cross-video terminology glossary +
+  Groq context refinement + CEFR adaptation, all glossary-aware for consistency
+- dubber.py: Fish Audio voice cloning (single-voice and per-speaker), emotion tags, audio
+  normalization, Demucs vocal/background separation with background remix,
+  primary-stream-safe muxing, unconfirmed-speaker original-audio passthrough
 - subtitle_sync.py: dual language SRT generation
 - data_collector.py: saves every translation to cefr_training_data.jsonl
-- src/api/main.py: FastAPI; /process-video zip now includes segments.json alongside SRT + video
-- frontend: React + Vite + TS; contexts for Theme, Settings, LearningData, Playback
+- src/api/jobs.py: in-memory job queue (JobManager), 1 worker thread by default
+- src/api/main.py: FastAPI; /process-video enqueues and returns a job_id;
+  /jobs/{id} and /jobs/{id}/download for status + result; SSRF-guarded url downloads
+- frontend: React + Vite + TS; contexts for Theme, Settings, LearningData, Playback;
+  useVideoProcessing polls the job queue instead of a blocking request + websocket
 
 ### LOCALSTORAGE KEYS
 `gip-theme`, `gip-level`, `gip-settings`, `gip-word-bank`, `gip-watch-history`,
@@ -89,24 +112,29 @@ exercise the fallback). Lets every player feature be tested without running the 
 - B2 level on songs still needs verification after CEFR prompt fix
 - Word-level timing for the GERMAN line is proportional, not true per-word timing —
   real German timings would require forced alignment against the dubbed audio
-- Word timings not yet verified against a real Groq response; the parsing/normalization
-  is unit-tested against both dict and object shapes, but an end-to-end run through the
-  live API would confirm the field names match
+- Speaker diarization accuracy is inherently probabilistic - pyannote can occasionally
+  split one speaker into two clusters or merge two distinct speakers into one, especially
+  on short clips; the confirmed-speaker duration threshold guards against acting on a
+  low-confidence split but doesn't eliminate misclassification
+- Job queue state is in-memory only - a server restart loses all queued/in-progress job
+  records, and any of their temp dirs on disk are orphaned (nothing can evict what's no
+  longer in the dict). Eviction of finished-but-never-downloaded jobs is also opportunistic
+  rather than timer-driven - it only runs when some job's status is next queried, so a
+  job finished right before the server goes idle can sit past its 1-hour retention window
+  until another request touches the queue. Fine for this app's current single-process
+  deployment, would need a persistent store + a real timer to fully close these gaps
+- MAX_CONCURRENT_JOBS is fixed at 1 for GPU safety - multiple submitted videos process
+  strictly sequentially, not in parallel, even on hardware with GPU headroom to spare
 
 ### NEXT SESSION PLAN
 
-**Speaker diarization (next priority)**
-- Use pyannote.audio to detect who is speaking when in multi-speaker videos
-- Clone a separate voice for each unique speaker detected
-- Match each transcribed segment to the correct speaker's cloned voice during dubbing
-- Use speaker voice verification to distinguish main speakers from meme sound effects,
-  background voices, or non-speech audio — anything that doesn't match a confirmed
-  speaker gets left untouched in the original audio rather than being dubbed
-- Must gracefully fall back to current single-speaker behavior if only one speaker is
-  detected or diarization fails
-- Flag if pyannote.audio needs a HuggingFace token for model access
+**Progress dashboard**
+- Words learned, minutes watched, CEFR progress over time
+- Data already collected via video history + word bank localStorage; needs a dedicated view
 
-**Still remaining after that**
-- Context-aware translation — pass full transcript for consistent terminology
-- Job queue system for concurrent video processing
-- Progress dashboard (words learned, minutes watched, CEFR progress over time)
+**Possible follow-ups**
+- Multi-speaker diarization has only been validated against a synthetic 2-speaker clip and
+  ground-truth-injected turns (see prior session) - worth running through a real
+  multi-speaker interview/dialogue video if one becomes available
+- MAX_CONCURRENT_JOBS could be made configurable (env var) for deployments with GPU
+  headroom to spare, or job records could be persisted to survive a server restart

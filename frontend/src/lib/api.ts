@@ -11,7 +11,6 @@ const LEVEL_NAMES: Record<GermanLevel, string> = {
 };
 
 export const API_BASE_URL: string = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
-const PROGRESS_WS_URL = `${API_BASE_URL.replace(/^http/, 'ws')}/progress`;
 
 export class ApiError extends Error {}
 
@@ -31,8 +30,20 @@ export interface ProcessVideoResult {
   segmentsJson: string | null;
 }
 
-/** Posts a video (file or url) + CEFR level to the backend and unzips the dubbed video + dual SRT it returns. */
-export async function processVideo(source: NonNullable<VideoSource>, level: GermanLevel): Promise<ProcessVideoResult> {
+export interface JobStatusResult {
+  jobId: string;
+  status: 'queued' | 'processing' | 'done' | 'error';
+  step: string | null;
+  queuePosition: number | null;
+  error: string | null;
+}
+
+/**
+ * Posts a video (file or url) + CEFR level to the backend, which persists it
+ * and hands it to the job queue rather than processing it inline — this
+ * call returns as soon as the job is queued, not once it's finished.
+ */
+export async function submitVideo(source: NonNullable<VideoSource>, level: GermanLevel): Promise<string> {
   const formData = new FormData();
   formData.append('level', level);
   if (source.kind === 'file') {
@@ -48,6 +59,33 @@ export async function processVideo(source: NonNullable<VideoSource>, level: Germ
 
   if (!response.ok) {
     throw new ApiError((await readErrorDetail(response)) ?? `Processing failed (${response.status})`);
+  }
+
+  const data = await response.json();
+  return data.job_id as string;
+}
+
+/** Reads one job's current status/step/queue position from the backend. */
+export async function getJobStatus(jobId: string): Promise<JobStatusResult> {
+  const response = await fetch(`${API_BASE_URL}/jobs/${jobId}`);
+  if (!response.ok) {
+    throw new ApiError((await readErrorDetail(response)) ?? `Could not check job status (${response.status})`);
+  }
+  const data = await response.json();
+  return {
+    jobId: data.job_id,
+    status: data.status,
+    step: data.step ?? null,
+    queuePosition: data.queue_position ?? null,
+    error: data.error ?? null,
+  };
+}
+
+/** Downloads a finished job's result zip and unzips the dubbed video + dual SRT out of it. */
+export async function downloadJobResult(jobId: string): Promise<ProcessVideoResult> {
+  const response = await fetch(`${API_BASE_URL}/jobs/${jobId}/download`);
+  if (!response.ok) {
+    throw new ApiError((await readErrorDetail(response)) ?? `Download failed (${response.status})`);
   }
 
   const zip = await JSZip.loadAsync(await response.blob());
@@ -100,18 +138,3 @@ export async function quickTranslateWord(word: string, sentence: string): Promis
   return answer.replace(/^["'.\s]+|["'.\s]+$/g, '');
 }
 
-/** Opens the /progress websocket and reports each {step, status} broadcast as the backend works through the pipeline. */
-export function connectProgressSocket(onStep: (step: string, status: string) => void): WebSocket {
-  const socket = new WebSocket(PROGRESS_WS_URL);
-  socket.onmessage = (event) => {
-    try {
-      const data = JSON.parse(event.data);
-      if (typeof data?.step === 'string' && typeof data?.status === 'string') {
-        onStep(data.step, data.status);
-      }
-    } catch {
-      // ignore malformed/non-JSON messages
-    }
-  };
-  return socket;
-}

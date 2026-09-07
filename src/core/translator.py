@@ -38,6 +38,9 @@ LEVEL_DESCRIPTIONS = {
 }
 
 
+GLOSSARY_MAX_TRANSCRIPT_CHARS = 20000
+
+
 def translate_base(text: str) -> str | None:
     """Accurate English -> German translation via DeepL."""
     try:
@@ -48,7 +51,90 @@ def translate_base(text: str) -> str | None:
         return None
 
 
-def refine_translation_context(english_text: str, german_text: str, max_retries: int = 2) -> str:
+def translate_base_batch(texts: list[str]) -> list[str] | None:
+    """
+    Translates every segment's text in a single DeepL call instead of one
+    call per segment. DeepL's list-translate endpoint sees the whole batch
+    as one job, which renders recurring names/terms far more consistently
+    across segments than isolated per-sentence calls would - the same name
+    translated in segment 1 is much less likely to drift by segment 20.
+    """
+    if not texts:
+        return []
+    try:
+        results = _get_deepl_client().translate_text(texts, source_lang="EN", target_lang="DE")
+        return [r.text for r in results]
+    except Exception as e:
+        print(f"Error batch-translating with DeepL: {e}")
+        return None
+
+
+def build_terminology_glossary(texts: list[str], max_retries: int = 2) -> str:
+    """
+    One-shot pass over the full English transcript that surfaces recurring
+    proper nouns, specific terms, and phrases so their German rendering can
+    be pinned down and reused by every segment's refinement/adaptation pass
+    below - the cheap way to get full-video consistency without resending
+    the entire transcript on every one of a video's N segment calls.
+
+    Returns a compact "English -> German" glossary as plain text, or "" if
+    there's nothing worth pinning down or the pass fails - callers should
+    proceed without it in either case rather than block translation on this.
+    """
+    full_text = " ".join(t.strip() for t in texts if t.strip())
+    if not full_text:
+        return ""
+    if len(full_text) > GLOSSARY_MAX_TRANSCRIPT_CHARS:
+        full_text = full_text[:GLOSSARY_MAX_TRANSCRIPT_CHARS]
+
+    prompt = f"""You are preparing a terminology glossary to keep an English-to-German
+translation consistent across an entire video's subtitles, which will be translated
+segment by segment rather than all at once.
+
+Read the full English transcript below and identify recurring proper nouns (people's
+names, place names, brand/product names), specific technical or domain terms, and
+repeated phrases that MUST be rendered the same way every single time they appear -
+not recurring common words, and not anything that only appears once.
+
+For each one, give the single German rendering to use consistently throughout (many
+names should simply stay unchanged - only list a German form when one is actually
+needed).
+
+Full transcript:
+\"\"\"
+{full_text}
+\"\"\"
+
+Return ONLY a compact list, one per line, formatted exactly as:
+English term -> German rendering
+
+If there is nothing worth pinning down, return nothing at all. Do not include ordinary
+words, and do not include anything that appears only once in the transcript."""
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            response = get_groq_client().chat.completions.create(
+                model=GROQ_ADAPTATION_MODEL,
+                max_tokens=512,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            return response.choices[0].message.content.strip()
+
+        except (groq.InternalServerError, groq.APIConnectionError, groq.RateLimitError) as e:
+            if attempt == max_retries:
+                print(f"Error building terminology glossary (continuing without it): {e}")
+                return ""
+            wait = 2 ** attempt
+            print(f"Model temporarily unavailable (attempt {attempt}/{max_retries}), retrying in {wait}s...")
+            time.sleep(wait)
+        except Exception as e:
+            print(f"Error building terminology glossary (continuing without it): {e}")
+            return ""
+
+    return ""
+
+
+def refine_translation_context(english_text: str, german_text: str, glossary: str = "", max_retries: int = 2) -> str:
     """
     DeepL sometimes translates slang, idioms, or context-dependent words too
     literally or in an uncommon sense. This reviews the pair and, when the
@@ -56,7 +142,18 @@ def refine_translation_context(english_text: str, german_text: str, max_retries:
     common MODERN everyday usage instead. This is a best-effort quality pass,
     not a hard requirement - any failure just falls back to DeepL's own
     output rather than aborting the translation.
+
+    glossary, when non-empty (see build_terminology_glossary), pins down how
+    recurring names/terms from elsewhere in the video should be rendered, so
+    this pass doesn't second-guess a term into a different-but-also-valid
+    German rendering than the one used in the video's other segments.
     """
+    glossary_block = (
+        f"\n\nKeep these terms consistent with their established German rendering used "
+        f"elsewhere in this video, if any of them appear here:\n{glossary}"
+        if glossary else ""
+    )
+
     prompt = f"""You are reviewing a machine translation from English to German, checking
 specifically for slang, idioms, or words with multiple possible meanings that
 machine translation often gets wrong (too literal, or an uncommon/outdated sense).
@@ -71,7 +168,7 @@ actually use in this context. Keep the rest of the sentence unchanged.
 
 If the translation is already natural and correct, return it exactly as given.
 
-Return ONLY the German text - no explanations, no notes, no quotation marks."""
+Return ONLY the German text - no explanations, no notes, no quotation marks.{glossary_block}"""
 
     for attempt in range(1, max_retries + 1):
         try:
@@ -96,15 +193,24 @@ Return ONLY the German text - no explanations, no notes, no quotation marks."""
     return german_text
 
 
-def adapt_to_level(german_text: str, level: str, max_retries: int = 4) -> str | None:
+def adapt_to_level(german_text: str, level: str, glossary: str = "", max_retries: int = 4) -> str | None:
     """
     Rewrites an already-correct German translation to match a target CEFR level.
     C2 needs no rewrite - DeepL's own output is already native-quality.
+
+    glossary (see build_terminology_glossary) pins recurring names/terms to a
+    single German rendering so a level rewrite doesn't drift a term into a
+    different, also-valid phrasing than the one used in the video's other segments.
     """
     if level == "C2":
         return german_text
 
     level_desc = LEVEL_DESCRIPTIONS.get(level, LEVEL_DESCRIPTIONS["B1"])
+    glossary_block = (
+        f"\n7. Keep these terms consistent with their established German rendering used "
+        f"elsewhere in this video, if any of them appear here:\n{glossary}"
+        if glossary else ""
+    )
 
     prompt = f"""You are adapting German text to a specific CEFR difficulty level. Follow these rules strictly:
 
@@ -114,7 +220,7 @@ def adapt_to_level(german_text: str, level: str, max_retries: int = 4) -> str | 
 4. ONLY adjust vocabulary complexity and sentence structure to match the target level.
 5. Keep the same facts, names, numbers, and order of ideas as the original.
 6. The result must express exactly the same content as the input - just written at a
-   different difficulty level, not a different or expanded version of it.
+   different difficulty level, not a different or expanded version of it.{glossary_block}
 
 Target level: {level} - {level_desc}.
 
@@ -144,16 +250,16 @@ Original German text:
             return None
 
 
-def translate_to_german(text: str, level: str = "B1", video_source: str | None = None) -> str | None:
+def translate_to_german(text: str, level: str = "B1", video_source: str | None = None, glossary: str = "") -> str | None:
     print(f"Translating to German at level {level}...")
 
     base = translate_base(text)
     if base is None:
         return None
 
-    refined_base = refine_translation_context(text, base)
+    refined_base = refine_translation_context(text, base, glossary)
 
-    adapted = adapt_to_level(refined_base, level)
+    adapted = adapt_to_level(refined_base, level, glossary)
     if adapted is None:
         return None
 
@@ -164,25 +270,54 @@ def translate_to_german(text: str, level: str = "B1", video_source: str | None =
 
 
 def translate_segments(segments: list, level: str = "B1", video_source: str | None = None) -> list | None:
+    """
+    Translates every segment to German, using the full video's transcript as
+    context so recurring names/terms/phrases stay consistent from the first
+    segment to the last instead of each segment being translated in
+    isolation. Two things make this context-aware without paying for the
+    full transcript on every one of a video's N segment calls:
+      - DeepL sees every segment in a single batched call (translate_base_batch)
+        rather than one call per segment, so its engine has the whole
+        document in view when choosing how to render a name or term.
+      - One extra Groq pass (build_terminology_glossary) reads the full
+        transcript once up front and pins down recurring terms; that compact
+        glossary - not the whole transcript - is then reused in every
+        segment's refinement/adaptation call below.
+    """
     try:
+        non_empty = [(i, s) for i, s in enumerate(segments) if s["text"].strip()]
+        skipped = len(segments) - len(non_empty)
+        if skipped:
+            print(f"{skipped} segment(s) have no text (empty Whisper segment), skipping")
+        if not non_empty:
+            print("No non-empty segments to translate")
+            return []
+
+        print("Building cross-video terminology glossary for consistency...")
+        glossary = build_terminology_glossary([s["text"] for _, s in non_empty])
+        if glossary:
+            print(f"Glossary:\n{glossary}\n")
+
+        print(f"Translating {len(non_empty)} segment(s) via DeepL (batched for consistency)...")
+        base_translations = translate_base_batch([s["text"] for _, s in non_empty])
+        if base_translations is None:
+            return None
+
         translated_segments = []
+        for (i, segment), base in zip(non_empty, base_translations):
+            print(f"Refining segment {i + 1}/{len(segments)}...")
 
-        for i, segment in enumerate(segments):
-            print(f"Translating segment {i+1}/{len(segments)}...")
-
-            if not segment["text"].strip():
-                print(f"Segment {i+1} has no text (empty Whisper segment), skipping")
-                continue
-
-            translated_text = translate_to_german(segment["text"], level, video_source)
-            if not translated_text:
+            refined_base = refine_translation_context(segment["text"], base, glossary)
+            adapted = adapt_to_level(refined_base, level, glossary)
+            if adapted is None:
                 return None
+            record_translation(segment["text"], base, level, adapted, video_source)
 
             translated_segment = {
                 "start": segment["start"],
                 "end": segment["end"],
                 "original": segment["text"],
-                "translated": translated_text
+                "translated": adapted,
             }
             # Word timings belong to the English source audio, so they drive
             # highlighting of the original line (the German is a rewrite and
