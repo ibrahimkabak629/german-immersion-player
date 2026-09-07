@@ -24,6 +24,13 @@ VOICE_CLONE_SAMPLE_DURATION = 30.0
 VOICE_CLONE_TRAIN_TIMEOUT = 60
 VOICE_CLONE_POLL_INTERVAL = 3
 
+# Demucs source separation (background music/ambiance preservation).
+DEMUCS_MODEL = "htdemucs"
+# How much to attenuate the separated background track when mixing it back in
+# under the new dubbed voice, so speech stays clearly in front. ~-10dB.
+BACKGROUND_MIX_VOLUME = 0.32
+_demucs_separator = None
+
 
 def generate_speech(text: str, output_path: str, reference_id: str | None = DEFAULT_REFERENCE_ID, emotion_tag: str | None = EMOTION_STYLE_TAG) -> str | None:
     try:
@@ -325,6 +332,137 @@ def build_dubbed_audio_track(dubbed_segments: list, output_path: str) -> str | N
         return None
 
 
+def _extract_audio_for_separation(video_path: str, output_path: str) -> str | None:
+    """
+    Pulls stereo 44.1kHz audio from the video for Demucs to work on.
+
+    Deliberately separate from transcriber.extract_audio's 16kHz mono output:
+    that's tuned for Whisper, which doesn't care about stereo or high
+    frequencies, but Demucs is trained on full-bandwidth stereo music and
+    would be starved of exactly the information (high frequencies, stereo
+    imaging) it needs to cleanly separate music from voice if fed the
+    downsampled mono file instead.
+    """
+    try:
+        command = ["ffmpeg", "-y", "-i", video_path, "-vn", "-ac", "2", "-ar", "44100", output_path]
+        subprocess.run(command, check=True, capture_output=True)
+        return output_path
+    except Exception as e:
+        print(f"Error extracting audio for source separation: {e}")
+        return None
+
+
+def _get_demucs_separator():
+    """Lazily loads the Demucs model (and downloads it on first use) so importing
+    this module doesn't require torch/demucs or pull the model unless this
+    feature is actually used."""
+    global _demucs_separator
+    if _demucs_separator is None:
+        import torch
+        from demucs.api import Separator
+
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading Demucs source separation model ({DEMUCS_MODEL}) on {device}...")
+        _demucs_separator = Separator(model=DEMUCS_MODEL, device=device)
+    return _demucs_separator
+
+
+def separate_vocals_and_background(video_path: str, temp_dir: str) -> tuple[str, str] | None:
+    """
+    Splits a video's audio into a vocals track and a background (music/
+    ambiance) track using Demucs, so the background can be preserved and
+    remixed under the new dubbed voice later, while only the vocals get
+    transcribed and translated.
+
+    Works best on instrumental background music/ambiance - a background
+    track with its own lyrics, or dialogue-like sound effects, will bleed
+    into one side or the other since Demucs only knows "voice vs. not
+    voice", not "the specific voice we want".
+
+    Returns (vocals_path, background_path), or None if Demucs isn't
+    installed, the model can't be loaded/downloaded, or separation fails for
+    any other reason - callers should fall back to the original full-audio
+    pipeline in that case rather than blocking dubbing on this.
+    """
+    try:
+        from demucs.api import save_audio
+
+        full_audio_path = os.path.join(temp_dir, "separation_source.wav")
+        if not _extract_audio_for_separation(video_path, full_audio_path):
+            return None
+
+        separator = _get_demucs_separator()
+
+        print("Separating vocals from background music...")
+        _, stems = separator.separate_audio_file(full_audio_path)
+
+        if "vocals" not in stems:
+            print(f"Demucs model didn't return a 'vocals' stem (got: {list(stems)})")
+            return None
+
+        background = None
+        for name, wave in stems.items():
+            if name == "vocals":
+                continue
+            background = wave if background is None else background + wave
+
+        if background is None:
+            print("Demucs model only produced a vocals stem, nothing to use as background")
+            return None
+
+        vocals_path = os.path.join(temp_dir, "vocals.wav")
+        background_path = os.path.join(temp_dir, "background.wav")
+        save_audio(stems["vocals"], vocals_path, separator.samplerate)
+        save_audio(background, background_path, separator.samplerate)
+
+        print("Vocal/background separation complete")
+        return vocals_path, background_path
+
+    except Exception as e:
+        print(f"Source separation unavailable, falling back to full audio: {e}")
+        return None
+
+
+def mix_voice_with_background(voice_path: str, background_path: str, output_path: str) -> str | None:
+    """
+    Mixes the dubbed voice track over the preserved background track, ducking
+    the background so the new speech stays clearly audible over it.
+
+    The voice track (built from dubbed segments) is normally shorter than the
+    background (which spans the whole original clip). ffmpeg's amix has a
+    "duration=longest" option that's supposed to zero-pad shorter inputs, but
+    it doesn't actually do that reliably - the shorter stream's last buffered
+    audio keeps getting held open/looped for the rest of the mix instead of
+    going silent (confirmed by testing: a short test tone bled through for the
+    entire remaining duration). Explicitly padding the voice track to the
+    background's exact length with apad first sidesteps amix's padding
+    entirely, so there's nothing left for it to get wrong.
+    """
+    try:
+        background_duration = get_audio_duration(background_path)
+        if background_duration is None:
+            return None
+
+        command = [
+            "ffmpeg", "-y",
+            "-i", voice_path,
+            "-i", background_path,
+            "-filter_complex",
+            f"[0:a]apad=whole_dur={background_duration:.3f}[voice];"
+            f"[1:a]volume={BACKGROUND_MIX_VOLUME}[bg];"
+            f"[voice][bg]amix=inputs=2:duration=first:normalize=0[out]",
+            "-map", "[out]",
+            output_path,
+        ]
+        subprocess.run(command, check=True, capture_output=True)
+        print(f"Mixed dubbed voice with background track: {output_path}")
+        return output_path
+
+    except Exception as e:
+        print(f"Error mixing voice with background: {e}")
+        return None
+
+
 def mux_audio_with_video(video_path: str, audio_path: str, output_path: str) -> str | None:
     try:
         # "-shortest" alone doesn't cut a copied video stream precisely — it only
@@ -340,7 +478,14 @@ def mux_audio_with_video(video_path: str, audio_path: str, output_path: str) -> 
             "ffmpeg", "-y",
             "-i", video_path,
             "-i", audio_path,
-            "-map", "0:v",
+            # "0:v:0" (not the bare "0:v") pins this to the video's first video
+            # stream specifically. Plain "0:v" matches *every* video stream,
+            # and many real-world MP4s carry a small embedded thumbnail as a
+            # second "video" stream (disposition=attached_pic) - some players
+            # then display that low-res cover art instead of the real footage,
+            # which looks exactly like the video having been downscaled even
+            # though the actual footage stream was never touched.
+            "-map", "0:v:0",
             "-map", "1:a",
             "-c:v", "copy",
             "-t", f"{target_duration:.3f}",
@@ -355,7 +500,14 @@ def mux_audio_with_video(video_path: str, audio_path: str, output_path: str) -> 
         return None
 
 
-def dub_video(video_path: str, segments: list, output_path: str, reference_id: str | None = None, clone_voice: bool = True) -> str | None:
+def dub_video(
+    video_path: str,
+    segments: list,
+    output_path: str,
+    reference_id: str | None = None,
+    clone_voice: bool = True,
+    background_audio_path: str | None = None,
+) -> str | None:
     """
     Full pipeline: translated segments -> German TTS -> synced audio track -> dubbed video.
 
@@ -364,6 +516,13 @@ def dub_video(video_path: str, segments: list, output_path: str, reference_id: s
     reference_id to use a fixed voice instead (skips cloning), or clone_voice=False
     to force Fish Audio's default voice. If cloning fails or isn't available on the
     current plan, dubbing falls back to DEFAULT_REFERENCE_ID automatically.
+
+    background_audio_path, when given (from separate_vocals_and_background,
+    called earlier in the pipeline before transcription), is the original
+    video's preserved background music/ambiance track. It gets mixed in under
+    the new dubbed voice instead of the voice replacing the entire original
+    audio. Leave it None to keep the original behavior of the dubbed voice
+    being the only audio.
     """
     print(f"Dubbing video: {video_path}")
 
@@ -388,7 +547,16 @@ def dub_video(video_path: str, segments: list, output_path: str, reference_id: s
             if not build_dubbed_audio_track(dubbed_segments, audio_track_path):
                 return None
 
-            if not mux_audio_with_video(video_path, audio_track_path, output_path):
+            final_audio_path = audio_track_path
+            if background_audio_path:
+                mixed_path = os.path.join(temp_dir, "dubbed_audio_with_background.mp3")
+                mixed = mix_voice_with_background(audio_track_path, background_audio_path, mixed_path)
+                if mixed:
+                    final_audio_path = mixed
+                else:
+                    print("Background mix failed, using dubbed voice alone")
+
+            if not mux_audio_with_video(video_path, final_audio_path, output_path):
                 return None
         finally:
             if cloned_voice_id:

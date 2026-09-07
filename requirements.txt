@@ -12,3 +12,17 @@ python-dotenv==1.2.2
 fastapi==0.141.1
 uvicorn[standard]==0.52.4
 python-multipart==0.0.32
+
+# Demucs (background music/ambiance separation before transcription). Its
+# PyPI package declares torch/torchaudio as install deps, but torchaudio is
+# only actually needed for its "train" extra - installing normally can pull
+# a different (CPU-only, older) torch and clobber the CUDA build above. It's
+# safest to install with `pip install demucs --no-deps` and let the lines
+# below cover its real runtime dependencies without touching torch.
+demucs==4.1.0
+einops==0.8.2
+huggingface-hub==1.30.0
+julius==0.2.8
+lameenc==1.8.4
+safetensors==0.8.0
+sphn==0.2.1

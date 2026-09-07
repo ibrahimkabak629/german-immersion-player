@@ -136,6 +136,7 @@ async def process_video(
     file: UploadFile | None = File(None),
     url: str | None = Form(None),
     level: str = Form("B1"),
+    preserve_background: bool = Form(True),
 ):
     if not file and not url:
         raise HTTPException(status_code=400, detail="Provide either a file upload or a url")
@@ -161,8 +162,23 @@ async def process_video(
         if not audio_path:
             raise HTTPException(status_code=500, detail="Audio extraction failed")
 
+        # Vocals/background separation happens before transcription so only the
+        # spoken voice gets transcribed and translated; the background track is
+        # carried through untouched and remixed under the dubbed voice later.
+        # Disabled, or on any failure (Demucs missing, model download failed,
+        # separation error), this just falls back to the original single-track
+        # pipeline - transcribing the full mixed audio, no background to mix back.
+        transcription_audio_path = audio_path
+        background_audio_path = None
+        if preserve_background:
+            separation = await run_in_threadpool(
+                dubber.separate_vocals_and_background, video_path, temp_dir
+            )
+            if separation:
+                transcription_audio_path, background_audio_path = separation
+
         await progress_manager.broadcast("transcribing", "in_progress")
-        transcription = await run_in_threadpool(transcriber.transcribe_audio, audio_path)
+        transcription = await run_in_threadpool(transcriber.transcribe_audio, transcription_audio_path)
         if not transcription:
             raise HTTPException(status_code=500, detail="Transcription failed")
 
@@ -176,7 +192,11 @@ async def process_video(
         await progress_manager.broadcast("dubbing", "in_progress")
         dubbed_video_path = os.path.join(temp_dir, "dubbed_video.mp4")
         dub_result = await run_in_threadpool(
-            dubber.dub_video, video_path, translated_segments, dubbed_video_path
+            dubber.dub_video,
+            video_path,
+            translated_segments,
+            dubbed_video_path,
+            background_audio_path=background_audio_path,
         )
         if not dub_result:
             raise HTTPException(status_code=500, detail="Dubbing failed")
