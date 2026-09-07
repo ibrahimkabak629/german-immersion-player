@@ -1,0 +1,219 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg-elevated: var(--bg-elevated);
+  --color-bg-elevated-2: var(--bg-elevated-2);
+  --color-canvas: var(--canvas);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-fg: var(--fg);
+  --color-fg-secondary: var(--fg-secondary);
+  --color-fg-muted: var(--fg-muted);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-soft: var(--accent-soft);
+  --color-de-red: var(--de-red);
+  --color-de-red-soft: var(--de-red-soft);
+  --color-success: var(--success);
+
+  --font-display: "Fraunces", ui-serif, Georgia, serif;
+  --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SFMono-Regular", monospace;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 22px;
+
+  --animate-fade-up: fade-up 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-shine: shine 2.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+:root {
+  color-scheme: dark;
+
+  --bg: oklch(15% 0.012 265);
+  --bg-elevated: oklch(19% 0.014 265);
+  --bg-elevated-2: oklch(23% 0.016 265);
+  --canvas: oklch(12.5% 0.012 265);
+  --border: oklch(100% 0 0 / 0.08);
+  --border-strong: oklch(100% 0 0 / 0.16);
+  --fg: oklch(96% 0.01 265);
+  --fg-secondary: oklch(72% 0.02 265);
+  --fg-muted: oklch(52% 0.02 265);
+  --accent: oklch(78% 0.16 75);
+  --accent-strong: oklch(72% 0.18 70);
+  --accent-soft: oklch(78% 0.16 75 / 0.14);
+  --de-red: oklch(58% 0.22 25);
+  --de-red-soft: oklch(58% 0.22 25 / 0.14);
+  --success: oklch(72% 0.15 155);
+
+  --shadow-float: 0 20px 60px -15px rgb(0 0 0 / 0.55);
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4), 0 12px 32px -12px rgb(0 0 0 / 0.5);
+  --glow-accent: 0 0 0 1px var(--accent-soft), 0 8px 40px -8px oklch(78% 0.16 75 / 0.35);
+}
+
+:root.light {
+  color-scheme: light;
+
+  --bg: oklch(98% 0.006 265);
+  --bg-elevated: oklch(100% 0 0);
+  --bg-elevated-2: oklch(95.5% 0.008 265);
+  --canvas: oklch(96.5% 0.006 265);
+  --border: oklch(0% 0 0 / 0.08);
+  --border-strong: oklch(0% 0 0 / 0.14);
+  --fg: oklch(20% 0.01 265);
+  --fg-secondary: oklch(40% 0.015 265);
+  --fg-muted: oklch(56% 0.015 265);
+  --accent-soft: oklch(78% 0.16 75 / 0.16);
+  --de-red-soft: oklch(58% 0.22 25 / 0.1);
+
+  --shadow-float: 0 20px 60px -15px rgb(0 0 0 / 0.16);
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.04), 0 12px 28px -14px rgb(0 0 0 / 0.16);
+  --glow-accent: 0 0 0 1px var(--accent-soft), 0 8px 32px -10px oklch(78% 0.16 75 / 0.25);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background-color: var(--canvas);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  position: relative;
+}
+
+/* Subtle designed-surface texture — dark mode only */
+:root:not(.light) body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.025;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Faint dot-grid on the working canvas for depth without noise */
+.bg-canvas-grid {
+  background-image: radial-gradient(circle, var(--border-strong) 1px, transparent 1px);
+  background-size: 22px 22px;
+  background-position: -11px -11px;
+  -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 40%, transparent 90%);
+  mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 40%, transparent 90%);
+}
+
+#root {
+  position: relative;
+  z-index: 1;
+}
+
+/* Thin, unobtrusive scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: var(--border-strong);
+  border-radius: 999px;
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--fg);
+}
+
+.video-seek-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+}
+.video-seek-range::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: none;
+  border-radius: 999px;
+  background: var(--accent);
+  cursor: pointer;
+}
+
+/* Gradient hairline border — the element also needs its own position
+   (relative/absolute/fixed) since this deliberately doesn't set one; forcing
+   `relative` here would silently override `fixed`/`absolute` on the same element. */
+.gradient-border {
+  isolation: isolate;
+}
+.gradient-border::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg, var(--accent) 0%, transparent 35%, var(--de-red) 100%);
+  opacity: 0.55;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+.text-balance {
+  text-wrap: balance;
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes shine {
+  from {
+    transform: translateX(-150%) skewX(-15deg);
+  }
+  to {
+    transform: translateX(250%) skewX(-15deg);
+  }
+}
+
+/* Subtle idle hint on the transcript's replay buttons — a slow opacity
+   breathe rather than motion, so it reads calmly even across many rows. */
+@keyframes replay-hint {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}
+.replay-hint {
+  animation: replay-hint 2.8s ease-in-out infinite;
+}
+.replay-hint-active {
+  animation: replay-hint 1.6s ease-in-out infinite;
+}

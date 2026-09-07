@@ -1,0 +1,37 @@
+# openai-whisper pulls in the CPU-only torch wheel by default. For GPU-
+# accelerated local transcription (used as a fallback when Groq is
+# unavailable), reinstall torch from PyTorch's CUDA index afterward, e.g.:
+#   pip install torch==2.12.0 --index-url https://download.pytorch.org/whl/cu132
+# (pick the cuXXX tag matching your installed torch version and GPU driver -
+# check https://download.pytorch.org/whl/torch/ for what's currently offered)
+openai-whisper==20250625
+deepl==1.32.0
+groq==1.7.0
+requests==2.34.2
+python-dotenv==1.2.2
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+python-multipart==0.0.32
+
+# Demucs (background music/ambiance separation before transcription). Its
+# PyPI package declares torch/torchaudio as install deps, but torchaudio is
+# only actually needed for its "train" extra - installing normally can pull
+# a different (CPU-only, older) torch and clobber the CUDA build above. It's
+# safest to install with `pip install demucs --no-deps` and let the lines
+# below cover its real runtime dependencies without touching torch.
+demucs==4.1.0
+einops==0.8.2
+huggingface-hub==1.30.0
+julius==0.2.8
+lameenc==1.8.4
+safetensors==0.8.0
+sphn==0.2.1
+
+# pyannote.audio (speaker diarization, for multi-speaker dubbing). Needs a
+# HUGGINGFACE_TOKEN in .env with access accepted for both
+# pyannote/speaker-diarization-3.1 and pyannote/segmentation-3.0 on
+# huggingface.co (both are gated models). Installing it normally is fine -
+# unlike Demucs, its torch pin didn't clobber the CUDA torch build above in
+# testing - but if a future version does, reinstall torch from the CUDA
+# index afterward the same way as noted at the top of this file.
+pyannote.audio==4.0.7
