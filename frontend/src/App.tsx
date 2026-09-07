@@ -21,6 +21,7 @@ import { PostVideoPopup, type PracticeOption } from './components/popup/PostVide
 import { PracticeModal } from './components/practice/PracticeModal';
 import { DailyChallenge } from './components/practice/DailyChallenge';
 import { LevelSuggestionPopup } from './components/practice/LevelSuggestionPopup';
+import { GermanKeyboardBar } from './components/ui/GermanKeyboardBar';
 import { useLevelProgress } from './hooks/useLevelProgress';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { useVideoProcessing } from './hooks/useVideoProcessing';
@@ -177,6 +178,8 @@ function AppContent() {
         }}
         onSelect={handlePracticeSelect}
       />
+
+      <GermanKeyboardBar />
 
       <LevelSuggestionPopup
         currentLevel={level}

@@ -8,6 +8,7 @@ export interface AppSettings {
   fillInBlank: boolean;
   pronunciationScoring: boolean;
   streakTracking: boolean;
+  germanKeyboard: boolean;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -18,6 +19,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   fillInBlank: false,
   pronunciationScoring: false,
   streakTracking: false,
+  germanKeyboard: true,
 };
 
 export interface SettingDescriptor {
@@ -34,6 +36,7 @@ export const SETTINGS_CATALOG: SettingDescriptor[] = [
   { key: 'fillInBlank', label: 'Fill in the blank mode', description: 'Practice by completing German sentences from what you watched.' },
   { key: 'pronunciationScoring', label: 'Pronunciation scoring', description: 'Record yourself and compare against the dubbed line.' },
   { key: 'streakTracking', label: 'Streak tracking', description: 'Track consecutive days you complete the daily challenge.' },
+  { key: 'germanKeyboard', label: 'German keyboard helper', description: 'Show ä ö ü ß buttons when you type in any text box.' },
 ];
 
 export interface WordBankEntry {
