@@ -29,7 +29,7 @@ video_path = r"C:\Users\ibrah\OneDrive\Documents\Projects\test_clip.mp4"
 output_path = r"C:\Users\ibrah\OneDrive\Documents\Projects\test_dubbed_output.mp4"
 
 print("Translating segments to German...\n")
-translated = translate_segments(test_segments, level="C2")  # C2 skips Claude adaptation (Anthropic account has no credit right now)
+translated = translate_segments(test_segments, level="C2")  # C2 skips the Groq adaptation call
 
 if not translated:
     print("Translation failed, aborting dubber test!")
