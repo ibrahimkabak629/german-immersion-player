@@ -2,3 +2,8 @@
 __pycache__/
 *.pyc
 data/
+
+# Local test videos - too large for GitHub (100MB limit), regenerate/re-source locally
+Tester Video.mp4
+test_clip.mp4
+test_dubbed_output.mp4
