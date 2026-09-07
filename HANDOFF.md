@@ -28,6 +28,27 @@
 - Exports: word bank as Anki CSV + plain CSV, transcript as side-by-side PDF
 - German keyboard helper: floating ä ö ü ß bar that follows focus into any text input
 
+**Dubbing pipeline fixes**
+- Video quality fix: found and fixed the real bug behind dubbed videos losing quality
+  (e.g. 1080p looking like 480p). `-c:v copy` was already in place, but
+  `mux_audio_with_video` mapped video with the bare `-map 0:v`, which matches every
+  video stream in the input — including embedded thumbnail/cover-art streams some
+  MP4s carry, which some players show instead of the real footage. Fixed with
+  `-map 0:v:0` to pin to the primary video stream only. Validated on a synthetic
+  1080p+thumbnail reproduction case and on real `test_clip.mp4` — output resolution
+  now matches input exactly, with `-c:v copy` confirming no re-encode.
+- Background music preservation: added Demucs (`htdemucs`, GPU-accelerated on the
+  RTX 4070) to separate vocals from background music/ambiance before transcription.
+  Only the vocals get transcribed and translated; the dubbed German voice is mixed
+  back over the ORIGINAL background track (with ducking) instead of replacing all
+  audio. New `preserve_background` toggle on `/process-video` (default enabled),
+  falls back to the original full-audio-replacement behavior automatically if
+  Demucs is missing or separation fails. Also fixed a real `amix` bug found while
+  testing: ffmpeg's `duration=longest` doesn't reliably zero-pad a shorter stream,
+  so the dubbed voice could bleed/hold open under the background for the rest of
+  the video — fixed by explicitly padding the voice track to the background's
+  length before mixing.
+
 ### WORD-LEVEL TIMESTAMPS (Feature 7 details)
 - transcriber.py requests `timestamp_granularities: ["segment", "word"]` from Groq;
   local Whisper fallback uses `word_timestamps=True`
@@ -43,7 +64,8 @@
 ### CURRENT STATE OF EVERY MODULE
 - transcriber.py: Groq Whisper large-v3 + word timestamps, GPU local fallback, confidence flagging
 - translator.py: DeepL base + Groq context refinement + CEFR adaptation; passes word timings through
-- dubber.py: Fish Audio voice cloning, emotion tags, audio normalization
+- dubber.py: Fish Audio voice cloning, emotion tags, audio normalization, Demucs
+  vocal/background separation with background remix, primary-stream-safe muxing
 - subtitle_sync.py: dual language SRT generation
 - data_collector.py: saves every translation to cefr_training_data.jsonl
 - src/api/main.py: FastAPI; /process-video zip now includes segments.json alongside SRT + video
@@ -71,9 +93,20 @@ exercise the fallback). Lets every player feature be tested without running the 
   is unit-tested against both dict and object shapes, but an end-to-end run through the
   live API would confirm the field names match
 
-### SUGGESTED NEXT STEPS
-1. Run a real video through the pipeline end-to-end to confirm Groq word timings land correctly
-2. Speaker diarization — detect who is speaking, assign different cloned voices
-3. Context-aware translation — pass full transcript for consistent terminology
-4. Job queue system for concurrent video processing
-5. Progress dashboard (words learned, minutes watched, CEFR progress over time)
+### NEXT SESSION PLAN
+
+**Speaker diarization (next priority)**
+- Use pyannote.audio to detect who is speaking when in multi-speaker videos
+- Clone a separate voice for each unique speaker detected
+- Match each transcribed segment to the correct speaker's cloned voice during dubbing
+- Use speaker voice verification to distinguish main speakers from meme sound effects,
+  background voices, or non-speech audio — anything that doesn't match a confirmed
+  speaker gets left untouched in the original audio rather than being dubbed
+- Must gracefully fall back to current single-speaker behavior if only one speaker is
+  detected or diarization fails
+- Flag if pyannote.audio needs a HuggingFace token for model access
+
+**Still remaining after that**
+- Context-aware translation — pass full transcript for consistent terminology
+- Job queue system for concurrent video processing
+- Progress dashboard (words learned, minutes watched, CEFR progress over time)
