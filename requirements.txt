@@ -26,3 +26,12 @@ julius==0.2.8
 lameenc==1.8.4
 safetensors==0.8.0
 sphn==0.2.1
+
+# pyannote.audio (speaker diarization, for multi-speaker dubbing). Needs a
+# HUGGINGFACE_TOKEN in .env with access accepted for both
+# pyannote/speaker-diarization-3.1 and pyannote/segmentation-3.0 on
+# huggingface.co (both are gated models). Installing it normally is fine -
+# unlike Demucs, its torch pin didn't clobber the CUDA torch build above in
+# testing - but if a future version does, reinstall torch from the CUDA
+# index afterward the same way as noted at the top of this file.
+pyannote.audio==4.0.7

@@ -3,7 +3,7 @@ import type { GermanLevel, Segment, VideoSource } from '../types/segment';
 import { ApiError, connectProgressSocket, processVideo } from '../lib/api';
 import { parseDualSrt, parseSegmentsJson } from '../lib/srtParser';
 
-export type ProcessingStep = 'extracting_audio' | 'transcribing' | 'translating' | 'dubbing' | 'syncing_subtitles' | 'done';
+export type ProcessingStep = 'extracting_audio' | 'transcribing' | 'diarizing' | 'translating' | 'dubbing' | 'syncing_subtitles' | 'done';
 
 export type ProcessingState =
   | { status: 'idle' }

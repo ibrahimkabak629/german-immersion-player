@@ -6,6 +6,7 @@ import { Logo } from '../ui/Logo';
 const STEPS: { key: ProcessingStep; label: string }[] = [
   { key: 'extracting_audio', label: 'Extracting audio' },
   { key: 'transcribing', label: 'Transcribing speech' },
+  { key: 'diarizing', label: 'Detecting speakers' },
   { key: 'translating', label: 'Translating to German' },
   { key: 'dubbing', label: 'Generating dubbed voice' },
   { key: 'syncing_subtitles', label: 'Syncing subtitles' },

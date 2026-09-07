@@ -257,25 +257,157 @@ def clone_voice_from_video(video_path: str, temp_dir: str) -> str | None:
     return model_id
 
 
-def generate_dubbed_segments(segments: list, temp_dir: str, reference_id: str | None = DEFAULT_REFERENCE_ID) -> list | None:
+def _extract_audio_range(audio_path: str, output_path: str, start: float, end: float) -> str | None:
+    """Pulls a [start, end] slice out of an audio file, unmodified."""
+    try:
+        command = [
+            "ffmpeg", "-y",
+            "-ss", str(start),
+            "-i", audio_path,
+            "-t", str(max(end - start, 0.01)),
+            output_path,
+        ]
+        subprocess.run(command, check=True, capture_output=True)
+        return output_path
+    except Exception as e:
+        print(f"Error extracting audio range [{start}, {end}]: {e}")
+        return None
+
+
+def extract_speaker_sample(audio_path: str, turns: list, speaker: str, output_path: str, temp_dir: str, target_duration: float = VOICE_CLONE_SAMPLE_DURATION) -> str | None:
+    """
+    Builds a voice-cloning reference sample for one diarized speaker by
+    concatenating their speaking turns - longest first - from the source
+    audio until target_duration is covered or the speaker's turns run out.
+    """
+    try:
+        speaker_turns = sorted(
+            (t for t in turns if t["speaker"] == speaker),
+            key=lambda t: t["end"] - t["start"],
+            reverse=True,
+        )
+        if not speaker_turns:
+            return None
+
+        clip_paths = []
+        covered = 0.0
+        for i, turn in enumerate(speaker_turns):
+            if covered >= target_duration:
+                break
+            clip_duration = min(turn["end"] - turn["start"], target_duration - covered)
+            clip_path = os.path.join(temp_dir, f"speaker_{speaker}_clip_{i}.wav")
+            if not _extract_audio_range(audio_path, clip_path, turn["start"], turn["start"] + clip_duration):
+                continue
+            clip_paths.append(clip_path)
+            covered += clip_duration
+
+        if not clip_paths:
+            return None
+        if len(clip_paths) == 1:
+            os.replace(clip_paths[0], output_path)
+            return output_path
+
+        concat_list_path = os.path.join(temp_dir, f"speaker_{speaker}_concat.txt")
+        with open(concat_list_path, "w", encoding="utf-8") as f:
+            for clip_path in clip_paths:
+                f.write(f"file '{os.path.abspath(clip_path)}'\n")
+
+        command = [
+            "ffmpeg", "-y",
+            "-f", "concat", "-safe", "0", "-i", concat_list_path,
+            "-ac", "1", "-ar", "44100",
+            output_path,
+        ]
+        subprocess.run(command, check=True, capture_output=True)
+        return output_path
+
+    except Exception as e:
+        print(f"Error extracting voice sample for speaker {speaker}: {e}")
+        return None
+
+
+def clone_voices_for_speakers(audio_path: str, turns: list, speakers: set, temp_dir: str) -> tuple[dict[str, str | None], dict[str, str]]:
+    """
+    Clones one Fish Audio voice per confirmed speaker, keyed by diarization
+    label. A speaker whose sample fails to extract or clone falls back to
+    DEFAULT_REFERENCE_ID individually rather than failing the whole video.
+
+    Returns (voice_ids, cloned_ids): voice_ids maps every speaker to the
+    reference_id to dub them with (a real clone or the default fallback);
+    cloned_ids maps only the speakers whose clone actually succeeded, for
+    callers to clean up afterward.
+    """
+    voice_ids: dict[str, str | None] = {}
+    cloned_ids: dict[str, str] = {}
+
+    for speaker in sorted(speakers):
+        sample_path = os.path.join(temp_dir, f"speaker_{speaker}_sample.wav")
+        if not extract_speaker_sample(audio_path, turns, speaker, sample_path, temp_dir):
+            print(f"Could not build a voice sample for speaker {speaker}, falling back to default voice")
+            voice_ids[speaker] = DEFAULT_REFERENCE_ID
+            continue
+
+        model_id = create_voice_clone(sample_path, title=f"german-immersion-temp-voice-{speaker}")
+        if model_id and wait_for_voice_clone_ready(model_id):
+            voice_ids[speaker] = model_id
+            cloned_ids[speaker] = model_id
+        else:
+            if model_id:
+                delete_voice_clone(model_id)
+            print(f"Voice cloning failed for speaker {speaker}, falling back to default voice")
+            voice_ids[speaker] = DEFAULT_REFERENCE_ID
+
+    return voice_ids, cloned_ids
+
+
+def generate_dubbed_segments(
+    segments: list,
+    temp_dir: str,
+    reference_id: str | None = DEFAULT_REFERENCE_ID,
+    speaker_voice_ids: dict[str, str | None] | None = None,
+    confirmed_speakers: set | None = None,
+    original_vocals_path: str | None = None,
+) -> list | None:
     """
     Generates German TTS audio for each translated segment and time-fits it
     to its segment's [start, end] window. Returns segments with an added
     'audio_path' pointing at the fitted clip.
+
+    Multi-speaker mode (speaker_voice_ids given): each segment is voiced with
+    its diarized speaker's own cloned voice instead of a single shared voice.
+    A segment whose speaker isn't in confirmed_speakers - a diarization
+    cluster too brief to be a real recurring speaker, more likely a sound
+    effect or background voice - is left as a passthrough of the ORIGINAL
+    vocal audio at that time range instead of being dubbed at all.
     """
     try:
         dubbed_segments = []
+        multi_speaker_mode = speaker_voice_ids is not None
 
         for i, segment in enumerate(segments):
             print(f"Generating speech for segment {i + 1}/{len(segments)}...")
+
+            speaker = segment.get("speaker")
+            if multi_speaker_mode and confirmed_speakers is not None and speaker not in confirmed_speakers:
+                if not original_vocals_path:
+                    print(f"Segment {i + 1}: speaker {speaker!r} not confirmed and no original audio to pass through, skipping")
+                    continue
+                passthrough_path = os.path.join(temp_dir, f"segment_{i}_passthrough.wav")
+                if not _extract_audio_range(original_vocals_path, passthrough_path, segment["start"], segment["end"]):
+                    continue
+                print(f"Segment {i + 1}: speaker {speaker!r} not confirmed, passing through original audio")
+                dubbed_segments.append({**segment, "audio_path": passthrough_path})
+                continue
 
             text = segment.get("translated") or segment.get("text")
             if not text:
                 print(f"Segment {i + 1} has no text to synthesize, skipping")
                 continue
 
+            segment_reference_id = speaker_voice_ids.get(speaker, DEFAULT_REFERENCE_ID) if multi_speaker_mode else reference_id
+
             raw_path = os.path.join(temp_dir, f"segment_{i}_raw.mp3")
-            if not generate_speech(text, raw_path, reference_id=reference_id):
+            if not generate_speech(text, raw_path, reference_id=segment_reference_id):
                 return None
 
             target_duration = segment["end"] - segment["start"]
@@ -297,6 +429,12 @@ def build_dubbed_audio_track(dubbed_segments: list, output_path: str) -> str | N
     """
     Places each fitted segment clip at its start timestamp on a single
     audio track, using ffmpeg's adelay + amix filters.
+
+    Segments can come from different sources with different formats (Fish
+    Audio TTS mp3s in multi-speaker mode, plus raw passthrough clips pulled
+    straight from the original vocals track for unconfirmed speakers) - each
+    is normalized to a common sample rate/channel layout before adelay/amix,
+    which require matching formats across all inputs.
     """
     try:
         if not dubbed_segments:
@@ -311,7 +449,7 @@ def build_dubbed_audio_track(dubbed_segments: list, output_path: str) -> str | N
         mix_inputs = []
         for i, segment in enumerate(dubbed_segments):
             delay_ms = int(segment["start"] * 1000)
-            filter_parts.append(f"[{i}:a]adelay={delay_ms}|{delay_ms}[a{i}]")
+            filter_parts.append(f"[{i}:a]aformat=sample_rates=44100:channel_layouts=stereo,adelay={delay_ms}|{delay_ms}[a{i}]")
             mix_inputs.append(f"[a{i}]")
 
         filter_complex = ";".join(filter_parts)
@@ -507,6 +645,9 @@ def dub_video(
     reference_id: str | None = None,
     clone_voice: bool = True,
     background_audio_path: str | None = None,
+    speaker_turns: list | None = None,
+    confirmed_speaker_labels: set | None = None,
+    vocals_audio_path: str | None = None,
 ) -> str | None:
     """
     Full pipeline: translated segments -> German TTS -> synced audio track -> dubbed video.
@@ -523,23 +664,57 @@ def dub_video(
     the new dubbed voice instead of the voice replacing the entire original
     audio. Leave it None to keep the original behavior of the dubbed voice
     being the only audio.
+
+    speaker_turns/confirmed_speaker_labels (from diarizer.diarize_audio and
+    diarizer.confirmed_speakers) switch on multi-speaker mode when more than
+    one confirmed speaker is present: a separate voice is cloned per speaker
+    and each segment is dubbed with its own speaker's voice, instead of one
+    voice cloned from the whole video. vocals_audio_path (the isolated vocal
+    track diarization ran on) supplies both the per-speaker cloning samples
+    and the original-audio passthrough for segments whose speaker isn't
+    confirmed. With 0 or 1 confirmed speakers, or reference_id/clone_voice
+    already fixing the voice, this falls back to the original single-voice
+    behavior untouched.
     """
     print(f"Dubbing video: {video_path}")
 
     with tempfile.TemporaryDirectory() as temp_dir:
-        cloned_voice_id = None
+        cloned_voice_ids: dict[str, str] = {}
         active_reference_id = reference_id
+        speaker_voice_ids = None
 
-        if active_reference_id is None and clone_voice:
+        multi_speaker = bool(
+            active_reference_id is None
+            and clone_voice
+            and speaker_turns
+            and confirmed_speaker_labels
+            and len(confirmed_speaker_labels) > 1
+        )
+
+        if multi_speaker:
+            sample_source = vocals_audio_path or video_path
+            speaker_voice_ids, cloned_voice_ids = clone_voices_for_speakers(
+                sample_source, speaker_turns, confirmed_speaker_labels, temp_dir
+            )
+            print(f"Cloned {len(cloned_voice_ids)}/{len(confirmed_speaker_labels)} speaker voice(s): {sorted(cloned_voice_ids) or 'none'}")
+        elif active_reference_id is None and clone_voice:
             cloned_voice_id = clone_voice_from_video(video_path, temp_dir)
             active_reference_id = cloned_voice_id or DEFAULT_REFERENCE_ID
             if cloned_voice_id:
+                cloned_voice_ids["_single"] = cloned_voice_id
                 print(f"Using cloned voice for dubbing: {cloned_voice_id}")
             else:
                 print("Voice cloning unavailable, falling back to default voice")
 
         try:
-            dubbed_segments = generate_dubbed_segments(segments, temp_dir, reference_id=active_reference_id)
+            dubbed_segments = generate_dubbed_segments(
+                segments,
+                temp_dir,
+                reference_id=active_reference_id,
+                speaker_voice_ids=speaker_voice_ids,
+                confirmed_speakers=confirmed_speaker_labels if multi_speaker else None,
+                original_vocals_path=vocals_audio_path,
+            )
             if not dubbed_segments:
                 return None
 
@@ -559,7 +734,7 @@ def dub_video(
             if not mux_audio_with_video(video_path, final_audio_path, output_path):
                 return None
         finally:
-            if cloned_voice_id:
-                delete_voice_clone(cloned_voice_id)
+            for voice_id in cloned_voice_ids.values():
+                delete_voice_clone(voice_id)
 
     return output_path

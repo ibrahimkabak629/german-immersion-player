@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from starlette.background import BackgroundTask
 
-from src.core import dubber, subtitle_sync, transcriber, translator
+from src.core import diarizer, dubber, subtitle_sync, transcriber, translator
 
 app = FastAPI(title="German Immersion Player API")
 
@@ -182,9 +182,22 @@ async def process_video(
         if not transcription:
             raise HTTPException(status_code=500, detail="Transcription failed")
 
+        # Speaker diarization runs on the same audio that was just
+        # transcribed (the isolated vocals track when background separation
+        # succeeded, otherwise the full extracted audio). On any failure
+        # (pyannote missing, no/invalid HF token, gated models not accepted)
+        # this just falls back to the existing single-voice dubbing below.
+        await progress_manager.broadcast("diarizing", "in_progress")
+        diarization_turns = await run_in_threadpool(diarizer.diarize_audio, transcription_audio_path)
+        segments_with_speakers = transcription["segments"]
+        confirmed_speaker_labels = None
+        if diarization_turns:
+            segments_with_speakers = diarizer.assign_speakers_to_segments(transcription["segments"], diarization_turns)
+            confirmed_speaker_labels = diarizer.confirmed_speakers(diarization_turns)
+
         await progress_manager.broadcast("translating", "in_progress")
         translated_segments = await run_in_threadpool(
-            translator.translate_segments, transcription["segments"], level, video_source
+            translator.translate_segments, segments_with_speakers, level, video_source
         )
         if not translated_segments:
             raise HTTPException(status_code=500, detail="Translation failed")
@@ -197,6 +210,9 @@ async def process_video(
             translated_segments,
             dubbed_video_path,
             background_audio_path=background_audio_path,
+            speaker_turns=diarization_turns,
+            confirmed_speaker_labels=confirmed_speaker_labels,
+            vocals_audio_path=transcription_audio_path,
         )
         if not dub_result:
             raise HTTPException(status_code=500, detail="Dubbing failed")

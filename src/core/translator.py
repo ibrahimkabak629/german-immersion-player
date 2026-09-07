@@ -170,6 +170,10 @@ def translate_segments(segments: list, level: str = "B1", video_source: str | No
         for i, segment in enumerate(segments):
             print(f"Translating segment {i+1}/{len(segments)}...")
 
+            if not segment["text"].strip():
+                print(f"Segment {i+1} has no text (empty Whisper segment), skipping")
+                continue
+
             translated_text = translate_to_german(segment["text"], level, video_source)
             if not translated_text:
                 return None
@@ -185,6 +189,8 @@ def translate_segments(segments: list, level: str = "B1", video_source: str | No
             # has no per-word timing of its own).
             if segment.get("words"):
                 translated_segment["words"] = segment["words"]
+            if "speaker" in segment:
+                translated_segment["speaker"] = segment["speaker"]
             translated_segments.append(translated_segment)
 
         print("All segments translated!")
