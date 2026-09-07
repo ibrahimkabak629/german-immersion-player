@@ -106,6 +106,8 @@ function AppContent() {
         <DownloadBar videoFile={processing.videoFile} srtBlob={processing.srtBlob} />
       </div>
     );
+  } else if (processing.status === 'queued') {
+    videoArea = <ProcessingOverlay step={null} queuePosition={processing.queuePosition ?? 1} />;
   } else if (processing.status === 'processing') {
     videoArea = <ProcessingOverlay step={processing.step} />;
   } else if (processing.status === 'error') {
