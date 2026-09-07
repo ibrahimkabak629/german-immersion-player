@@ -131,7 +131,11 @@ function AppContent() {
         }
         videoArea={videoArea}
         transcriptPanel={
-          <TranscriptPanel segments={segments} onWordClick={settings.grammarExplainer ? handleWordClick : undefined} />
+          <TranscriptPanel
+            segments={segments}
+            videoTitle={currentTitle}
+            onWordClick={settings.grammarExplainer ? handleWordClick : undefined}
+          />
         }
         tutorPanel={<AITutorChat level={level} segments={segments} />}
         onWordBank={() => setWordBankOpen(true)}

@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
-import { BookMarked, Check, Loader2, Star } from 'lucide-react';
+import { BookMarked, Check, Download, Loader2, Star } from 'lucide-react';
 import clsx from 'clsx';
 import { Drawer } from '../ui/Drawer';
 import { useLearningData } from '../../context/LearningDataContext';
 import { quickTranslateWord } from '../../lib/api';
+import { downloadTextFile, wordBankToAnkiCsv, wordBankToCsv } from '../../lib/exporters';
 import type { WordBankEntry } from '../../types/learning';
 
 interface WordBankPanelProps {
@@ -42,6 +43,27 @@ export function WordBankPanel({ open, onClose }: WordBankPanelProps) {
         ))}
         <span className="ml-auto self-center text-xs text-fg-muted">{wordBank.length} words</span>
       </div>
+
+      {wordBank.length > 0 && (
+        <div className="flex shrink-0 items-center gap-1.5 border-b border-border px-4 py-2.5">
+          <Download size={13} strokeWidth={1.75} className="shrink-0 text-fg-muted" />
+          <button
+            type="button"
+            onClick={() => downloadTextFile(wordBankToAnkiCsv(visible), 'word-bank-anki.csv', 'text/csv')}
+            className="rounded-full border border-border px-2.5 py-1 text-xs text-fg-secondary transition-colors hover:border-border-strong hover:text-fg"
+          >
+            Anki CSV
+          </button>
+          <button
+            type="button"
+            onClick={() => downloadTextFile(wordBankToCsv(visible), 'word-bank.csv', 'text/csv')}
+            className="rounded-full border border-border px-2.5 py-1 text-xs text-fg-secondary transition-colors hover:border-border-strong hover:text-fg"
+          >
+            Plain CSV
+          </button>
+          <span className="ml-auto text-[11px] text-fg-muted">{visible.length} in view</span>
+        </div>
+      )}
 
       {visible.length === 0 ? (
         <div className="flex flex-col items-center gap-2 px-6 py-16 text-center">

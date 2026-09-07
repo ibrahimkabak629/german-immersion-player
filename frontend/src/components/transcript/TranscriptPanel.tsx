@@ -1,16 +1,18 @@
 import { useEffect, useRef } from 'react';
-import { ScrollText } from 'lucide-react';
+import { FileDown, ScrollText } from 'lucide-react';
 import type { Segment } from '../../types/segment';
 import { usePlayback } from '../../context/PlaybackContext';
 import { useActiveSegment } from '../../hooks/useActiveSegment';
+import { printTranscriptPdf } from '../../lib/exporters';
 import { TranscriptEntry } from './TranscriptEntry';
 
 interface TranscriptPanelProps {
   segments: Segment[];
+  videoTitle?: string | null;
   onWordClick?: (word: string, segment: Segment) => void;
 }
 
-export function TranscriptPanel({ segments, onWordClick }: TranscriptPanelProps) {
+export function TranscriptPanel({ segments, videoTitle, onWordClick }: TranscriptPanelProps) {
   const { currentTime, subtitleOffset, seekTo, replaySegment } = usePlayback();
   const { index: activeIndex } = useActiveSegment(segments, currentTime - subtitleOffset);
 
@@ -44,7 +46,18 @@ export function TranscriptPanel({ segments, onWordClick }: TranscriptPanelProps)
           <h2 className="text-xs font-medium uppercase tracking-wide text-fg-muted">Transcript</h2>
         </div>
         {segments.length > 0 && (
-          <span className="font-[family-name:var(--font-mono)] text-[11px] text-fg-muted">{segments.length} lines</span>
+          <div className="flex items-center gap-2">
+            <span className="font-[family-name:var(--font-mono)] text-[11px] text-fg-muted">{segments.length} lines</span>
+            <button
+              type="button"
+              title="Export transcript as PDF"
+              onClick={() => printTranscriptPdf(segments, videoTitle || 'Transcript')}
+              className="flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[11px] text-fg-secondary transition-colors hover:border-border-strong hover:text-fg"
+            >
+              <FileDown size={11} strokeWidth={1.75} />
+              PDF
+            </button>
+          </div>
         )}
       </div>
       <div onWheel={handleWheel} className="min-h-0 flex-1 overflow-y-auto p-2">
