@@ -38,6 +38,18 @@ response = client.post("/process-video", data={"level": "Z9"}, files={"file": ("
 assert response.status_code == 400, "Should reject an invalid CEFR level"
 print("Validation checks passed!\n")
 
+print("Testing /process-video rejects SSRF-style urls...\n")
+for bad_url in [
+    "http://169.254.169.254/latest/meta-data/",  # cloud metadata endpoint
+    "http://127.0.0.1:8000/health",  # loopback
+    "http://localhost/",  # loopback via hostname
+    "http://10.0.0.5/video.mp4",  # private range
+    "ftp://example.com/video.mp4",  # disallowed scheme
+]:
+    response = client.post("/process-video", data={"level": "B1", "url": bad_url})
+    assert response.status_code == 400, f"Should reject SSRF-style url {bad_url!r}, got {response.status_code}"
+print("SSRF checks passed!\n")
+
 print("Testing POST /process-video end-to-end (trimmed clip) with live /progress updates...\n")
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 source_clip = os.path.join(project_root, "test_clip.mp4")
@@ -70,7 +82,7 @@ with tempfile.TemporaryDirectory() as temp_dir:
             assert "subtitles_dual.srt" in names
             print(f"Zip contents: {names}\n")
 
-        expected_steps = {"extracting_audio", "transcribing", "translating", "dubbing", "syncing_subtitles", "done"}
+        expected_steps = {"extracting_audio", "transcribing", "diarizing", "translating", "dubbing", "syncing_subtitles", "done"}
         received_steps = set()
         for _ in range(len(expected_steps)):
             message = websocket.receive_json()

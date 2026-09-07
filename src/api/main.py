@@ -1,8 +1,11 @@
+import ipaddress
 import json
 import os
 import shutil
+import socket
 import tempfile
 import zipfile
+from urllib.parse import urlparse
 
 import requests
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
@@ -123,8 +126,52 @@ def _save_upload(file: UploadFile, destination: str) -> None:
         shutil.copyfileobj(file.file, f)
 
 
+def _is_public_address(ip: str) -> bool:
+    addr = ipaddress.ip_address(ip)
+    return not (
+        addr.is_private
+        or addr.is_loopback
+        or addr.is_link_local
+        or addr.is_multicast
+        or addr.is_reserved
+        or addr.is_unspecified
+    )
+
+
+def _assert_safe_url(url: str) -> None:
+    """
+    Blocks server-side request forgery: the video `url` a caller supplies is
+    fetched by this server, so an unvalidated URL would let a caller reach
+    cloud metadata endpoints, internal-only services, or other hosts this
+    server can reach but the caller can't. Restricts to http(s), resolves
+    the hostname, and rejects any resolved address that isn't publicly
+    routable.
+    """
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise HTTPException(status_code=400, detail="url must use http or https")
+    if not parsed.hostname:
+        raise HTTPException(status_code=400, detail="url is missing a host")
+
+    try:
+        resolved = socket.getaddrinfo(parsed.hostname, None)
+    except socket.gaierror:
+        raise HTTPException(status_code=400, detail="url host could not be resolved")
+
+    addresses = {info[4][0] for info in resolved}
+    if not addresses or not all(_is_public_address(ip) for ip in addresses):
+        raise HTTPException(status_code=400, detail="url must point to a public address")
+
+
 def _download_video(url: str, destination: str) -> None:
-    response = requests.get(url, stream=True, timeout=30)
+    _assert_safe_url(url)
+    # Redirects are not followed: re-validating every hop (including
+    # DNS-rebinding between check and connect) is more machinery than this
+    # app's threat model needs, so a URL that redirects is simply rejected
+    # rather than silently followed to an unvalidated destination.
+    response = requests.get(url, stream=True, timeout=30, allow_redirects=False)
+    if 300 <= response.status_code < 400:
+        raise HTTPException(status_code=400, detail="url must not redirect")
     response.raise_for_status()
     with open(destination, "wb") as f:
         for chunk in response.iter_content(chunk_size=1024 * 1024):
